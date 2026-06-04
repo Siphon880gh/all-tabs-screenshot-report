@@ -1,4 +1,8 @@
 const STORAGE_KEY = "tabReport";
+const VIEW_MODE_KEY = "reportViewMode";
+
+/** @type {"full" | "thumbnail"} */
+let viewMode = "full";
 
 /** @type {{ generatedAt?: string, tabCount?: number, tabs: object[] } | null} */
 let reportData = null;
@@ -212,10 +216,45 @@ function printReport() {
   window.print();
 }
 
+function updateViewToggleButton() {
+  const btn = document.getElementById("btn-view-toggle");
+  if (!btn) return;
+  const thumbnail = viewMode === "thumbnail";
+  btn.textContent = thumbnail ? "Full view" : "Thumbnails";
+  btn.setAttribute(
+    "aria-pressed",
+    thumbnail ? "true" : "false"
+  );
+  btn.title = thumbnail
+    ? "Show full-size screenshots"
+    : "Show compact thumbnail grid";
+}
+
+function applyViewLayout() {
+  const root = document.getElementById("report-root");
+  if (!root) return;
+  const showThumbnail =
+    viewMode === "thumbnail" || isDragging || isDragHandleActive;
+  root.classList.toggle("is-thumbnail-view", showThumbnail);
+}
+
+function setViewMode(mode) {
+  viewMode = mode === "thumbnail" ? "thumbnail" : "full";
+  applyViewLayout();
+  updateViewToggleButton();
+  chrome.storage.local.set({ [VIEW_MODE_KEY]: viewMode }).catch(() => {});
+}
+
+function toggleViewMode() {
+  setViewMode(viewMode === "thumbnail" ? "full" : "thumbnail");
+}
+
 function updateActionButtons() {
   const hasTabs = Boolean(reportData?.tabs?.length);
   document.getElementById("btn-export").disabled = !hasTabs;
   document.getElementById("btn-print").disabled = !hasTabs;
+  const viewBtn = document.getElementById("btn-view-toggle");
+  if (viewBtn) viewBtn.disabled = !hasTabs;
 }
 
 async function saveReport() {
@@ -297,12 +336,14 @@ function createTabCard(tab, index) {
   const handle = card.querySelector(".drag-handle");
   handle.addEventListener("mousedown", () => {
     card.draggable = true;
-    setRearrangeMode(true);
+    isDragHandleActive = true;
+    applyViewLayout();
   });
   handle.addEventListener("mouseup", () => {
     requestAnimationFrame(() => {
+      isDragHandleActive = false;
       if (!isDragging) {
-        setRearrangeMode(false);
+        applyViewLayout();
       }
       card.draggable = false;
     });
@@ -316,6 +357,7 @@ function createTabCard(tab, index) {
 
 let draggedIndex = null;
 let isDragging = false;
+let isDragHandleActive = false;
 let dropHandled = false;
 /** @type {object[] | null} */
 let dragStartTabs = null;
@@ -325,10 +367,6 @@ let dragoverRaf = null;
 const TRANSPARENT_DRAG_IMAGE = new Image();
 TRANSPARENT_DRAG_IMAGE.src =
   "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
-
-function setRearrangeMode(on) {
-  document.getElementById("report-root")?.classList.toggle("is-rearranging", on);
-}
 
 function syncCardIndices(root) {
   root.querySelectorAll(".tab-card").forEach((card, i) => {
@@ -450,7 +488,7 @@ function setupDragAndDrop(root) {
     dragStartTabs = reportData?.tabs ? [...reportData.tabs] : null;
     draggedIndex = Number(card.dataset.index);
     card.classList.add("is-dragging");
-    setRearrangeMode(true);
+    applyViewLayout();
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("text/plain", card.dataset.index);
     e.dataTransfer.setDragImage(TRANSPARENT_DRAG_IMAGE, 0, 0);
@@ -474,10 +512,11 @@ function setupDragAndDrop(root) {
     }
 
     isDragging = false;
+    isDragHandleActive = false;
     draggedIndex = null;
     dragStartTabs = null;
     dropHandled = false;
-    setRearrangeMode(false);
+    applyViewLayout();
   });
 
   root.addEventListener("dragover", (e) => {
@@ -542,14 +581,22 @@ function renderReport() {
   });
 
   updateMeta();
+  applyViewLayout();
 }
 
 async function loadReport() {
-  const stored = await chrome.storage.local.get(STORAGE_KEY);
+  const stored = await chrome.storage.local.get([STORAGE_KEY, VIEW_MODE_KEY]);
   reportData = stored[STORAGE_KEY] ?? null;
+  if (stored[VIEW_MODE_KEY] === "thumbnail" || stored[VIEW_MODE_KEY] === "full") {
+    viewMode = stored[VIEW_MODE_KEY];
+  }
 
   const root = document.getElementById("report-root");
   setupDragAndDrop(root);
+
+  document.getElementById("btn-view-toggle").addEventListener("click", toggleViewMode);
+  updateViewToggleButton();
+  applyViewLayout();
 
   document.getElementById("btn-export").addEventListener("click", () => {
     exportReport().catch((err) => {

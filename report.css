@@ -169,15 +169,15 @@ body {
   margin-bottom: 8px;
 }
 
-/* ——— Compact rearrange layout ——— */
-.report-root.is-rearranging {
+/* ——— Thumbnail (compact grid) layout ——— */
+.report-root.is-thumbnail-view {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 12px;
   align-items: start;
 }
 
-.report-root.is-rearranging .tab-card {
+.report-root.is-thumbnail-view .tab-card {
   display: flex;
   flex-direction: column;
   padding: 10px 12px;
@@ -187,38 +187,38 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .report-root.is-rearranging .tab-card {
+  .report-root.is-thumbnail-view .tab-card {
     transition: none;
   }
 }
 
-.report-root.is-rearranging .tab-card-toolbar {
+.report-root.is-thumbnail-view .tab-card-toolbar {
   flex-shrink: 0;
   margin-bottom: 8px;
   padding-bottom: 8px;
 }
 
-.report-root.is-rearranging .tab-card-body {
+.report-root.is-thumbnail-view .tab-card-body {
   flex-direction: row;
   gap: 10px;
   align-items: flex-start;
   min-width: 0;
 }
 
-.report-root.is-rearranging .tab-card-media {
+.report-root.is-thumbnail-view .tab-card-media {
   order: 1;
   flex: 0 0 112px;
   width: 112px;
   min-width: 112px;
 }
 
-.report-root.is-rearranging .tab-card-info {
+.report-root.is-thumbnail-view .tab-card-info {
   order: 2;
   flex: 1;
   min-width: 0;
 }
 
-.report-root.is-rearranging .tab-card-info h2 {
+.report-root.is-thumbnail-view .tab-card-info h2 {
   margin: 0;
   font-size: 0.82rem;
   line-height: 1.3;
@@ -228,11 +228,11 @@ body {
   overflow: hidden;
 }
 
-.report-root.is-rearranging .tab-card-url {
+.report-root.is-thumbnail-view .tab-card-url {
   display: none;
 }
 
-.report-root.is-rearranging .tab-description {
+.report-root.is-thumbnail-view .tab-description {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
@@ -243,7 +243,7 @@ body {
   color: #555;
 }
 
-.report-root.is-rearranging .tab-screenshot {
+.report-root.is-thumbnail-view .tab-screenshot {
   width: 112px;
   height: 72px;
   max-width: none;
@@ -251,7 +251,7 @@ body {
   object-position: top left;
 }
 
-.report-root.is-rearranging .screenshot-error {
+.report-root.is-thumbnail-view .screenshot-error {
   width: 112px;
   height: 72px;
   min-height: 0;
@@ -260,21 +260,21 @@ body {
   line-height: 1.2;
 }
 
-.report-root.is-rearranging .screenshot-error-detail {
+.report-root.is-thumbnail-view .screenshot-error-detail {
   display: none;
 }
 
-.report-root.is-rearranging .screenshot-error strong {
+.report-root.is-thumbnail-view .screenshot-error strong {
   margin: 0;
   font-size: 0.62rem;
 }
 
 /* Dragged card stays in the list and slides into its new slot */
-.report-root.is-rearranging .tab-card {
+.report-root.is-thumbnail-view .tab-card {
   position: relative;
 }
 
-.report-root.is-rearranging .tab-card.is-dragging {
+.report-root.is-thumbnail-view .tab-card.is-dragging {
   opacity: 0.55;
   border: 2px dashed #8fa3d4;
   background: #f5f8ff;
