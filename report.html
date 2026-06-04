@@ -8,9 +8,15 @@
   </head>
   <body>
     <header class="report-header">
-      <h1>Tab Screenshot Report</h1>
+      <div class="report-header-top">
+        <h1>Tab Screenshot Report</h1>
+        <div class="report-actions">
+          <button type="button" id="btn-export" class="btn-action" title="Save report folder for offline viewing">Export</button>
+          <button type="button" id="btn-print" class="btn-action" title="Print this report">Print</button>
+        </div>
+      </div>
       <p id="report-meta" class="report-meta">Loading report…</p>
-      <p class="report-hint">Drag a card to reorder (compact thumbnails while dragging) · Delete removes it from this report</p>
+      <p class="report-hint">Drag a card to reorder — it slides into place in the grid · Delete removes it from this report</p>
     </header>
     <main id="report-root" class="report-root"></main>
     <p id="report-empty" class="report-empty" hidden>No report data found. Click the extension icon to generate a report.</p>

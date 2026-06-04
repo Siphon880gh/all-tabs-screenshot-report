@@ -24,6 +24,200 @@ function formatGeneratedAt(iso) {
   }
 }
 
+function screenshotFilename(index) {
+  return `screenshot${String(index + 1).padStart(2, "0")}.png`;
+}
+
+function dataUrlToBlob(dataUrl) {
+  const [header, base64] = dataUrl.split(",");
+  const mime = header.match(/:(.*?);/)?.[1] || "image/png";
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new Blob([bytes], { type: mime });
+}
+
+const EXPORT_STYLES = `
+:root {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: #1a1a1a;
+  background: #f4f4f5;
+}
+body {
+  margin: 0;
+  padding: 24px;
+  max-width: 960px;
+  margin-inline: auto;
+}
+.report-header { margin-bottom: 24px; }
+.report-header h1 { margin: 0 0 8px; font-size: 1.5rem; }
+.report-meta { margin: 0; color: #555; font-size: 0.9rem; }
+.report-root { display: flex; flex-direction: column; gap: 20px; }
+.tab-card {
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 16px 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+.tab-card-info h2 {
+  margin: 0 0 8px;
+  font-size: 1.1rem;
+  line-height: 1.35;
+  word-break: break-word;
+}
+.tab-card-url a { color: #1a56db; word-break: break-all; }
+.tab-description {
+  margin: 0 0 12px;
+  color: #444;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+.tab-screenshot {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid #e5e5e5;
+  border-radius: 4px;
+}
+.screenshot-error {
+  min-height: 240px;
+  border: 2px dashed #999;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: #555;
+  background: #fafafa;
+  border-radius: 4px;
+  box-sizing: border-box;
+}
+.screenshot-error strong { color: #333; margin-bottom: 8px; }
+`.trim();
+
+function buildExportScreenshotBlock(tab, index) {
+  if (tab.screenshot) {
+    const filename = screenshotFilename(index);
+    return `<img class="tab-screenshot" src="${escapeAttr(filename)}" alt="Screenshot of ${escapeAttr(tab.title)}">`;
+  }
+  return `<div class="screenshot-error">
+    <strong>Screenshot unavailable</strong>
+    <span>${escapeHtml(tab.error || "Unknown error")}</span>
+  </div>`;
+}
+
+function buildExportHtml() {
+  const count = reportData.tabs.length;
+  const failed = reportData.tabs.filter((t) => !t.screenshot).length;
+  const meta = `${count} tab${count === 1 ? "" : "s"} · Generated ${formatGeneratedAt(reportData.generatedAt)}${failed ? ` · ${failed} without screenshot` : ""}`;
+
+  const cards = reportData.tabs
+    .map(
+      (tab, index) => `
+    <section class="tab-card">
+      <div class="tab-card-info">
+        <h2>${escapeHtml(tab.title)}</h2>
+        <p class="tab-card-url">
+          <a href="${escapeAttr(tab.url)}" target="_blank" rel="noopener noreferrer">
+            ${escapeHtml(tab.url || "(no URL)")}
+          </a>
+        </p>
+        ${tab.description ? `<p class="tab-description">${escapeHtml(tab.description)}</p>` : ""}
+      </div>
+      ${buildExportScreenshotBlock(tab, index)}
+    </section>`
+    )
+    .join("\n");
+
+  return `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tab Screenshot Report</title>
+    <style>${EXPORT_STYLES}</style>
+  </head>
+  <body>
+    <header class="report-header">
+      <h1>Tab Screenshot Report</h1>
+      <p class="report-meta">${escapeHtml(meta)}</p>
+    </header>
+    <main class="report-root">
+${cards}
+    </main>
+  </body>
+</html>
+`;
+}
+
+async function writeFileToDirectory(dirHandle, filename, blob) {
+  const fileHandle = await dirHandle.getFileHandle(filename, { create: true });
+  const writable = await fileHandle.createWritable();
+  await writable.write(blob);
+  await writable.close();
+}
+
+async function exportReport() {
+  if (!reportData?.tabs?.length) return;
+
+  if (typeof window.showDirectoryPicker !== "function") {
+    alert("Export requires a browser that supports folder selection (Chrome or Edge).");
+    return;
+  }
+
+  const btn = document.getElementById("btn-export");
+  btn.disabled = true;
+  const originalLabel = btn.textContent;
+  btn.textContent = "Exporting…";
+
+  try {
+    const dirHandle = await window.showDirectoryPicker({
+      mode: "readwrite",
+      startIn: "downloads",
+    });
+
+    await writeFileToDirectory(dirHandle, "index.html", new Blob([buildExportHtml()], { type: "text/html" }));
+
+    for (let i = 0; i < reportData.tabs.length; i += 1) {
+      const tab = reportData.tabs[i];
+      if (tab.screenshot) {
+        await writeFileToDirectory(
+          dirHandle,
+          screenshotFilename(i),
+          dataUrlToBlob(tab.screenshot)
+        );
+      }
+    }
+
+    btn.textContent = "Exported";
+    setTimeout(() => {
+      btn.textContent = originalLabel;
+    }, 2000);
+  } catch (err) {
+    if (err?.name !== "AbortError") {
+      alert(`Export failed: ${err?.message || err}`);
+    }
+    btn.textContent = originalLabel;
+  } finally {
+    btn.disabled = !reportData?.tabs?.length;
+  }
+}
+
+function printReport() {
+  if (!reportData?.tabs?.length) return;
+  window.print();
+}
+
+function updateActionButtons() {
+  const hasTabs = Boolean(reportData?.tabs?.length);
+  document.getElementById("btn-export").disabled = !hasTabs;
+  document.getElementById("btn-print").disabled = !hasTabs;
+}
+
 async function saveReport() {
   if (!reportData) return;
   reportData.tabCount = reportData.tabs.length;
@@ -41,6 +235,7 @@ function updateMeta() {
       : "";
     root.replaceChildren();
     empty.hidden = false;
+    updateActionButtons();
     return;
   }
 
@@ -48,6 +243,7 @@ function updateMeta() {
   const count = reportData.tabs.length;
   const failed = reportData.tabs.filter((t) => !t.screenshot).length;
   meta.textContent = `${count} tab${count === 1 ? "" : "s"} · Generated ${formatGeneratedAt(reportData.generatedAt)}${failed ? ` · ${failed} without screenshot` : ""} · Drag to reorder`;
+  updateActionButtons();
 }
 
 function buildScreenshotBlock(tab) {
@@ -92,7 +288,8 @@ function createTabCard(tab, index) {
 
   card.querySelector(".btn-delete").addEventListener("click", (e) => {
     e.stopPropagation();
-    reportData.tabs.splice(index, 1);
+    const idx = Number(card.dataset.index);
+    reportData.tabs.splice(idx, 1);
     saveReport();
     renderReport();
   });
@@ -119,9 +316,128 @@ function createTabCard(tab, index) {
 
 let draggedIndex = null;
 let isDragging = false;
+let dropHandled = false;
+/** @type {object[] | null} */
+let dragStartTabs = null;
+/** @type {number | null} */
+let dragoverRaf = null;
+
+const TRANSPARENT_DRAG_IMAGE = new Image();
+TRANSPARENT_DRAG_IMAGE.src =
+  "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 
 function setRearrangeMode(on) {
   document.getElementById("report-root")?.classList.toggle("is-rearranging", on);
+}
+
+function syncCardIndices(root) {
+  root.querySelectorAll(".tab-card").forEach((card, i) => {
+    card.dataset.index = String(i);
+    const label = card.querySelector(".tab-card-index");
+    if (label) label.textContent = String(i + 1);
+  });
+}
+
+/** Inset on card midlines so pointer near an edge does not flip-flop slots. */
+const INSERT_HYSTERESIS = 0.2;
+
+function syncTabsFromDomOrder(root) {
+  if (!reportData?.tabs) return;
+  const tabs = reportData.tabs;
+  reportData.tabs = [...root.querySelectorAll(".tab-card")].map(
+    (card) => tabs[Number(card.dataset.index)]
+  );
+  syncCardIndices(root);
+}
+
+function animateCardReflow(root) {
+  const cards = [...root.querySelectorAll(".tab-card")];
+  const before = new Map(cards.map((card) => [card, card.getBoundingClientRect()]));
+
+  return () => {
+    for (const card of cards) {
+      const prev = before.get(card);
+      const next = card.getBoundingClientRect();
+      const dx = prev.left - next.left;
+      const dy = prev.top - next.top;
+      if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) continue;
+
+      card.style.transition = "none";
+      card.style.transform = `translate(${dx}px, ${dy}px)`;
+      card.offsetHeight;
+      card.style.transition = "transform 0.22s ease";
+      card.style.transform = "";
+
+      const onEnd = () => {
+        card.style.transition = "";
+        card.removeEventListener("transitionend", onEnd);
+      };
+      card.addEventListener("transitionend", onEnd);
+    }
+  };
+}
+
+/** DOM-order insert slot from pointer (grid read order: row, then column). */
+function findInsertBeforeCard(root, dragged, clientX, clientY) {
+  const cards = [...root.querySelectorAll(".tab-card")];
+
+  for (let i = 0; i < cards.length; i += 1) {
+    const card = cards[i];
+    if (card === dragged) continue;
+
+    const rect = card.getBoundingClientRect();
+    const rowBand = rect.height * INSERT_HYSTERESIS;
+    const colBand = rect.width * INSERT_HYSTERESIS;
+    const midY = rect.top + rect.height / 2;
+    const midX = rect.left + rect.width / 2;
+    const onRow = clientY >= rect.top + rowBand && clientY <= rect.bottom - rowBand;
+
+    if (clientY < midY - rowBand) {
+      return card;
+    }
+    if (onRow && clientX < midX - colBand) {
+      return card;
+    }
+    if (onRow && clientX > midX + colBand) {
+      const next = cards.slice(i + 1).find((c) => c !== dragged);
+      if (next) return next;
+    }
+  }
+  return null;
+}
+
+function isDraggedInSlot(dragged, insertBefore) {
+  if (insertBefore) {
+    return dragged.nextElementSibling === insertBefore;
+  }
+  return dragged.nextElementSibling === null;
+}
+
+function applyDragInsertion(root, dragged, insertBefore) {
+  if (isDraggedInSlot(dragged, insertBefore)) return false;
+
+  const playFlip = animateCardReflow(root);
+  if (insertBefore) {
+    root.insertBefore(dragged, insertBefore);
+  } else {
+    root.appendChild(dragged);
+  }
+  syncTabsFromDomOrder(root);
+  playFlip();
+  return true;
+}
+
+function setDropIndicator(root, insertBefore) {
+  root.querySelectorAll(".tab-card.is-drop-target").forEach((el) => {
+    el.classList.remove("is-drop-target");
+  });
+  if (insertBefore && !insertBefore.classList.contains("is-dragging")) {
+    insertBefore.classList.add("is-drop-target");
+  }
+}
+
+function getDraggedCard(root) {
+  return root.querySelector(".tab-card.is-dragging");
 }
 
 function setupDragAndDrop(root) {
@@ -130,44 +446,61 @@ function setupDragAndDrop(root) {
     if (!card || !root.contains(card)) return;
 
     isDragging = true;
+    dropHandled = false;
+    dragStartTabs = reportData?.tabs ? [...reportData.tabs] : null;
     draggedIndex = Number(card.dataset.index);
     card.classList.add("is-dragging");
     setRearrangeMode(true);
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("text/plain", card.dataset.index);
-
-    const ghost = card.cloneNode(true);
-    ghost.classList.add("tab-card-drag-ghost");
-    ghost.classList.remove("is-dragging");
-    ghost.setAttribute("aria-hidden", "true");
-    document.body.appendChild(ghost);
-    const rect = ghost.getBoundingClientRect();
-    e.dataTransfer.setDragImage(ghost, rect.width / 2, rect.height / 2);
-    requestAnimationFrame(() => ghost.remove());
+    e.dataTransfer.setDragImage(TRANSPARENT_DRAG_IMAGE, 0, 0);
   });
 
   root.addEventListener("dragend", (e) => {
+    if (dragoverRaf) {
+      cancelAnimationFrame(dragoverRaf);
+      dragoverRaf = null;
+    }
+
     const card = e.target.closest(".tab-card");
     if (card) card.classList.remove("is-dragging");
     root.querySelectorAll(".tab-card.is-drop-target").forEach((el) => {
       el.classList.remove("is-drop-target");
     });
+
+    if (!dropHandled && dragStartTabs && reportData) {
+      reportData.tabs = dragStartTabs;
+      renderReport();
+    }
+
     isDragging = false;
     draggedIndex = null;
+    dragStartTabs = null;
+    dropHandled = false;
     setRearrangeMode(false);
   });
 
   root.addEventListener("dragover", (e) => {
-    const card = e.target.closest(".tab-card");
-    if (!card || !root.contains(card) || draggedIndex === null) return;
+    if (draggedIndex === null) return;
 
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
 
-    root.querySelectorAll(".tab-card.is-drop-target").forEach((el) => {
-      el.classList.remove("is-drop-target");
+    if (dragoverRaf) return;
+
+    const clientX = e.clientX;
+    const clientY = e.clientY;
+    dragoverRaf = requestAnimationFrame(() => {
+      dragoverRaf = null;
+
+      const dragged = getDraggedCard(root);
+      if (!dragged) return;
+
+      const insertBefore = findInsertBeforeCard(root, dragged, clientX, clientY);
+      setDropIndicator(root, insertBefore);
+      applyDragInsertion(root, dragged, insertBefore);
+      draggedIndex = Number(dragged.dataset.index);
     });
-    card.classList.add("is-drop-target");
   });
 
   root.addEventListener("dragleave", (e) => {
@@ -179,18 +512,19 @@ function setupDragAndDrop(root) {
 
   root.addEventListener("drop", (e) => {
     e.preventDefault();
-    const card = e.target.closest(".tab-card");
-    if (!card || draggedIndex === null) return;
+    dropHandled = true;
 
-    const dropIndex = Number(card.dataset.index);
-    if (draggedIndex === dropIndex) return;
+    const dragged = getDraggedCard(root);
+    if (dragged) {
+      dragged.classList.remove("is-dragging");
+    }
+    root.querySelectorAll(".tab-card.is-drop-target").forEach((el) => {
+      el.classList.remove("is-drop-target");
+    });
 
-    const [moved] = reportData.tabs.splice(draggedIndex, 1);
-    reportData.tabs.splice(dropIndex, 0, moved);
-
-    setRearrangeMode(false);
-    saveReport();
-    renderReport();
+    if (draggedIndex !== null && reportData?.tabs) {
+      saveReport();
+    }
   });
 }
 
@@ -216,6 +550,13 @@ async function loadReport() {
 
   const root = document.getElementById("report-root");
   setupDragAndDrop(root);
+
+  document.getElementById("btn-export").addEventListener("click", () => {
+    exportReport().catch((err) => {
+      alert(`Export failed: ${err?.message || err}`);
+    });
+  });
+  document.getElementById("btn-print").addEventListener("click", printReport);
 
   if (!reportData?.tabs?.length) {
     updateMeta();

@@ -15,9 +15,44 @@ body {
   margin-bottom: 24px;
 }
 
+.report-header-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
 .report-header h1 {
-  margin: 0 0 8px;
+  margin: 0;
   font-size: 1.5rem;
+}
+
+.report-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.btn-action {
+  padding: 6px 14px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background: #fff;
+  color: #1a1a1a;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.btn-action:hover:not(:disabled) {
+  background: #f0f0f0;
+  border-color: #aaa;
+}
+
+.btn-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .report-meta {
@@ -148,6 +183,13 @@ body {
   padding: 10px 12px;
   min-width: 0;
   overflow: hidden;
+  transition: transform 0.22s ease, opacity 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .report-root.is-rearranging .tab-card {
+    transition: none;
+  }
 }
 
 .report-root.is-rearranging .tab-card-toolbar {
@@ -227,107 +269,26 @@ body {
   font-size: 0.62rem;
 }
 
-/* Placeholder slot while dragging */
-.report-root.is-rearranging .tab-card.is-dragging {
-  opacity: 1;
-  border: 2px dashed #b8c4e0;
-  background: #eef2fb;
-  box-shadow: none;
-  min-height: 118px;
-}
-
-.report-root.is-rearranging .tab-card.is-dragging .tab-card-toolbar,
-.report-root.is-rearranging .tab-card.is-dragging .tab-card-body {
-  visibility: hidden;
-}
-
-.report-root.is-rearranging .tab-card.is-dragging::after {
-  content: "Drop here";
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: #6b7aab;
-}
-
+/* Dragged card stays in the list and slides into its new slot */
 .report-root.is-rearranging .tab-card {
   position: relative;
+}
+
+.report-root.is-rearranging .tab-card.is-dragging {
+  opacity: 0.55;
+  border: 2px dashed #8fa3d4;
+  background: #f5f8ff;
+  box-shadow: 0 6px 20px rgba(26, 86, 219, 0.12);
+  z-index: 2;
 }
 
 .tab-card.is-dragging {
   cursor: grabbing;
 }
 
-.tab-card.is-drop-target {
+.tab-card.is-drop-target:not(.is-dragging) {
   border-color: #1a56db;
-  box-shadow: 0 0 0 2px rgba(26, 86, 219, 0.25);
-}
-
-/* Small drag preview (not the full card) */
-.tab-card-drag-ghost {
-  position: fixed;
-  left: -9999px;
-  top: 0;
-  z-index: -1;
-  width: 200px !important;
-  padding: 8px 10px !important;
-  pointer-events: none;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
-}
-
-.tab-card-drag-ghost .tab-card-toolbar .btn-delete,
-.tab-card-drag-ghost .tab-card-url,
-.tab-card-drag-ghost .screenshot-error-detail {
-  display: none !important;
-}
-
-.tab-card-drag-ghost .tab-card-body {
-  display: flex;
-  flex-direction: row;
-  gap: 8px;
-}
-
-.tab-card-drag-ghost .tab-card-media {
-  order: 1;
-  flex: 0 0 80px;
-  width: 80px;
-}
-
-.tab-card-drag-ghost .tab-card-info {
-  order: 2;
-  flex: 1;
-  min-width: 0;
-}
-
-.tab-card-drag-ghost .tab-screenshot {
-  width: 80px;
-  height: 52px;
-  object-fit: cover;
-}
-
-.tab-card-drag-ghost .screenshot-error {
-  width: 80px;
-  height: 52px;
-  min-height: 0;
-  padding: 4px;
-  font-size: 0.55rem;
-}
-
-.tab-card-drag-ghost .tab-card-info h2 {
-  font-size: 0.75rem;
-  margin: 0;
-  -webkit-line-clamp: 2;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.tab-card-drag-ghost .tab-card-toolbar {
-  margin-bottom: 6px;
-  padding-bottom: 6px;
+  box-shadow: 0 0 0 2px rgba(26, 86, 219, 0.2);
 }
 
 .drag-handle {
@@ -377,4 +338,38 @@ body {
   color: #666;
   text-align: center;
   padding: 48px 16px;
+}
+
+@media print {
+  body {
+    padding: 0;
+    max-width: none;
+    background: #fff;
+  }
+
+  .report-actions,
+  .report-hint,
+  .tab-card-toolbar {
+    display: none !important;
+  }
+
+  .report-header {
+    margin-bottom: 16px;
+  }
+
+  .tab-card {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    box-shadow: none;
+    border-color: #ccc;
+  }
+
+  .tab-screenshot {
+    pointer-events: auto;
+  }
+
+  .tab-card-url a {
+    color: #1a1a1a;
+    text-decoration: underline;
+  }
 }
