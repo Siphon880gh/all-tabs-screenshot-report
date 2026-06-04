@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CE Extension</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <h1>CE Extension</h1>
+      <p class="subtitle">Scaffold — replace UI as you build</p>
+    </header>
+
+    <section>
+      <h2>New tab</h2>
+      <label>
+        URL
+        <input id="new-tab-url" type="url" value="https://example.com" />
+      </label>
+      <button id="btn-create-tab" type="button">Open tab</button>
+    </section>
+
+    <section>
+      <h2>Switch tab</h2>
+      <label>
+        Tab
+        <select id="tab-select"></select>
+      </label>
+      <button id="btn-switch-tab" type="button">Switch to tab</button>
+    </section>
+
+    <section>
+      <h2>Screenshot</h2>
+      <button id="btn-screenshot-active" type="button">Capture active tab</button>
+      <button id="btn-screenshot-selected" type="button">Capture selected tab</button>
+      <div id="preview" class="preview" hidden>
+        <img id="preview-img" alt="Last screenshot" />
+      </div>
+    </section>
+
+    <p id="status" class="status" role="status"></p>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>
