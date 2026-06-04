@@ -89,9 +89,20 @@ body {
   margin: 0 0 12px;
 }
 
-.tab-card-info a {
+.tab-card-info p:last-child {
+  margin-bottom: 0;
+}
+
+.tab-card-url a {
   color: #1a56db;
   word-break: break-all;
+}
+
+.tab-description {
+  margin: 0 0 12px;
+  color: #444;
+  font-size: 0.9rem;
+  line-height: 1.45;
 }
 
 .tab-screenshot {
@@ -175,8 +186,19 @@ body {
   overflow: hidden;
 }
 
-.report-root.is-rearranging .tab-card-info p {
+.report-root.is-rearranging .tab-card-url {
   display: none;
+}
+
+.report-root.is-rearranging .tab-description {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: #555;
 }
 
 .report-root.is-rearranging .tab-screenshot {
@@ -257,7 +279,7 @@ body {
 }
 
 .tab-card-drag-ghost .tab-card-toolbar .btn-delete,
-.tab-card-drag-ghost .tab-card-info p,
+.tab-card-drag-ghost .tab-card-url,
 .tab-card-drag-ghost .screenshot-error-detail {
   display: none !important;
 }

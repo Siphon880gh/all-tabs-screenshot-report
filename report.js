@@ -75,11 +75,16 @@ function createTabCard(tab, index) {
     <div class="tab-card-body">
       <div class="tab-card-info">
         <h2>${escapeHtml(tab.title)}</h2>
-        <p>
+        <p class="tab-card-url">
           <a href="${escapeAttr(tab.url)}" target="_blank" rel="noopener noreferrer">
             ${escapeHtml(tab.url || "(no URL)")}
           </a>
         </p>
+        ${
+          tab.description
+            ? `<p class="tab-description">${escapeHtml(tab.description)}</p>`
+            : ""
+        }
       </div>
       <div class="tab-card-media">${buildScreenshotBlock(tab)}</div>
     </div>

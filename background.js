@@ -1,6 +1,5 @@
 const STORAGE_KEY = "tabReport";
-const CAPTURE_DELAY_MS = 500;
-const HOST_ORIGINS = ["<all_urls>", "*://*/*", "http://*/*", "https://*/*"];
+const TAB_PREPARE_DELAY_MS = 600;
 
 const SITE_ACCESS_HELP =
   'Enable "On all sites" for this extension: open chrome://extensions, find "Tab Screenshot Report", set Site access to "On all sites", then click Reload.';
@@ -16,7 +15,9 @@ function isProbablyRestrictedUrl(url = "") {
     url.startsWith("edge://") ||
     url.startsWith("about:") ||
     url.startsWith("devtools://") ||
-    url.startsWith("file://")
+    url.startsWith("file://") ||
+    url.startsWith("view-source:") ||
+    url.startsWith("chrome-untrusted://")
   );
 }
 
@@ -26,9 +27,94 @@ function tabResultFromTab(tab) {
     windowId: tab.windowId,
     title: tab.title || "Untitled",
     url: tab.url || "",
+    description: null,
     screenshot: null,
     error: null,
   };
+}
+
+/** Runs inside the page — must be self-contained (no closure vars). */
+function extractMetaDescription() {
+  const read = (meta) => meta?.getAttribute("content")?.trim() || "";
+
+  for (const meta of document.querySelectorAll("meta[content]")) {
+    if ((meta.getAttribute("name") || "").toLowerCase() === "description") {
+      const text = read(meta);
+      if (text) return text;
+    }
+  }
+
+  for (const meta of document.querySelectorAll("meta[content]")) {
+    const prop = (meta.getAttribute("property") || "").toLowerCase();
+    const name = (meta.getAttribute("name") || "").toLowerCase();
+    if (prop === "og:description" || name === "og:description") {
+      const text = read(meta);
+      if (text) return text;
+    }
+  }
+
+  for (const meta of document.querySelectorAll("meta[content]")) {
+    if ((meta.getAttribute("name") || "").toLowerCase() === "twitter:description") {
+      const text = read(meta);
+      if (text) return text;
+    }
+  }
+
+  return null;
+}
+
+async function waitForTabComplete(tabId, timeoutMs = 4000) {
+  const tab = await chrome.tabs.get(tabId);
+  if (tab.status === "complete") return;
+
+  await new Promise((resolve) => {
+    const timeout = setTimeout(resolve, timeoutMs);
+
+    const onUpdated = (updatedId, info) => {
+      if (updatedId !== tabId) return;
+      if (info.status === "complete") {
+        clearTimeout(timeout);
+        chrome.tabs.onUpdated.removeListener(onUpdated);
+        resolve();
+      }
+    };
+
+    chrome.tabs.onUpdated.addListener(onUpdated);
+  });
+}
+
+async function prepareTab(tab) {
+  await chrome.tabs.update(tab.id, { active: true });
+  await chrome.windows.update(tab.windowId, { focused: true });
+  await waitForTabComplete(tab.id);
+  await delay(TAB_PREPARE_DELAY_MS);
+}
+
+async function fetchPageDescription(tab) {
+  if (!tab?.id || isProbablyRestrictedUrl(tab.url || "")) {
+    return null;
+  }
+
+  const worlds = ["ISOLATED", "MAIN"];
+
+  for (const world of worlds) {
+    try {
+      const [injection] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        world,
+        func: extractMetaDescription,
+      });
+
+      const value = injection?.result;
+      if (typeof value === "string" && value.length > 0) {
+        return value;
+      }
+    } catch {
+      // try next execution world
+    }
+  }
+
+  return null;
 }
 
 async function hasHostAccessForCapture() {
@@ -36,44 +122,21 @@ async function hasHostAccessForCapture() {
     return chrome.extension.isAllowedHostAccess();
   }
 
-  for (const origins of [
-    ["<all_urls>"],
-    ["*://*/*"],
-    ["http://*/*", "https://*/*"],
-  ]) {
-    try {
-      if (await chrome.permissions.contains({ origins })) {
-        return true;
-      }
-    } catch {
-      // try next pattern
-    }
+  try {
+    return await chrome.permissions.contains({ origins: ["<all_urls>"] });
+  } catch {
+    return false;
   }
-
-  return false;
 }
 
-/**
- * Request broad host access while the toolbar click user gesture is still valid.
- */
 async function ensureHostPermissions() {
   if (await hasHostAccessForCapture()) {
     return;
   }
 
-  let granted = false;
-  for (const origins of [
-    ["<all_urls>"],
-    ["*://*/*"],
-    ["http://*/*", "https://*/*"],
-  ]) {
-    try {
-      granted = await chrome.permissions.request({ origins });
-      if (granted) break;
-    } catch {
-      // try next pattern
-    }
-  }
+  const granted = await chrome.permissions.request({
+    origins: ["<all_urls>"],
+  });
 
   if (!granted || !(await hasHostAccessForCapture())) {
     throw new Error(SITE_ACCESS_HELP);
@@ -84,12 +147,12 @@ async function captureTabImage(tab) {
   const options = { format: "png" };
 
   if (typeof chrome.tabs.captureTab === "function") {
-    return chrome.tabs.captureTab(tab.id, options);
+    try {
+      return await chrome.tabs.captureTab(tab.id, options);
+    } catch {
+      // fall through to visible-tab capture
+    }
   }
-
-  await chrome.tabs.update(tab.id, { active: true });
-  await chrome.windows.update(tab.windowId, { focused: true });
-  await delay(CAPTURE_DELAY_MS);
 
   return chrome.tabs.captureVisibleTab(tab.windowId, options);
 }
@@ -108,14 +171,39 @@ async function captureTabSafely(tab) {
     return result;
   }
 
+  if (!result.url) {
+    result.error = "Page still loading (no URL yet)";
+    return result;
+  }
+
   try {
-    result.screenshot = await captureTabImage(tab);
+    await prepareTab(tab);
+    const freshTab = await chrome.tabs.get(tab.id);
+
+    const [screenshot, description] = await Promise.all([
+      captureTabImage(freshTab).catch((err) => ({ error: err })),
+      fetchPageDescription(freshTab),
+    ]);
+
+    if (screenshot?.error) {
+      throw screenshot.error;
+    }
+    result.screenshot = screenshot;
+    result.description = description;
   } catch (err) {
     const message = err?.message || "Screenshot failed";
     if (message.includes("activeTab") || message.includes("all_urls")) {
       result.error = `${message}. ${SITE_ACCESS_HELP}`;
-    } else {
+    } else if (!result.error) {
       result.error = message;
+    }
+
+    if (!result.description) {
+      try {
+        result.description = await fetchPageDescription(tab);
+      } catch {
+        result.description = null;
+      }
     }
   }
 
@@ -192,6 +280,7 @@ chrome.action.onClicked.addListener(() => {
             title: "Permission required",
             url: `chrome://extensions/?id=${chrome.runtime.id}`,
             screenshot: null,
+            description: null,
             error: err?.message || SITE_ACCESS_HELP,
           },
         ],

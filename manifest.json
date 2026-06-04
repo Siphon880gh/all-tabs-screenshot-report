@@ -1,11 +1,10 @@
 {
   "manifest_version": 3,
   "name": "Tab Screenshot Report",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Lists all tabs with URLs and screenshots in one report page.",
   "permissions": ["tabs", "activeTab", "scripting", "storage"],
-  "host_permissions": ["<all_urls>", "*://*/*"],
-  "optional_host_permissions": ["<all_urls>", "*://*/*", "http://*/*", "https://*/*"],
+  "host_permissions": ["<all_urls>"],
   "action": {
     "default_title": "Create Tab Report"
   },
