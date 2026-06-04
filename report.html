@@ -21,6 +21,17 @@
     </header>
     <main id="report-root" class="report-root"></main>
     <p id="report-empty" class="report-empty" hidden>No report data found. Click the extension icon to generate a report.</p>
+    <footer id="report-footer" class="report-footer">
+      <p class="report-storage-note">
+        Reports are saved locally in your browser. Large reports with many screenshots use a lot of
+        space. Over time, if storage fills up, this extension may stop being able to save or update
+        reports. Clear stored data when you are finished with this report (for example, after
+        exporting or printing). Clearing will also exit this report.
+      </p>
+      <button type="button" id="btn-clear-storage" class="btn-action btn-clear-storage">
+        Clear stored report
+      </button>
+    </footer>
     <script src="report-storage.js"></script>
     <script src="report.js"></script>
   </body>

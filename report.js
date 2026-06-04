@@ -294,6 +294,25 @@ async function saveReport() {
   await saveTabReport(reportData);
 }
 
+async function clearStoredReport() {
+  const ok = window.confirm(
+    "Clear the stored report from this extension? You can generate a new report anytime."
+  );
+  if (!ok) return;
+
+  await clearTabReport();
+  reportData = null;
+  renderReport();
+  updateClearStorageButton();
+}
+
+function updateClearStorageButton() {
+  const btn = document.getElementById("btn-clear-storage");
+  if (!btn) return;
+  const hasStored = Boolean(reportData?.tabs?.length || reportData?.generatedAt);
+  btn.disabled = !hasStored;
+}
+
 function updateMeta() {
   const meta = document.getElementById("report-meta");
   const empty = document.getElementById("report-empty");
@@ -306,6 +325,7 @@ function updateMeta() {
     root.replaceChildren();
     empty.hidden = false;
     updateActionButtons();
+    updateClearStorageButton();
     return;
   }
 
@@ -314,6 +334,7 @@ function updateMeta() {
   const failed = reportData.tabs.filter((t) => !t.screenshot).length;
   meta.textContent = `${count} tab${count === 1 ? "" : "s"} · Generated ${formatGeneratedAt(reportData.generatedAt)}${failed ? ` · ${failed} without screenshot` : ""} · Drag to reorder`;
   updateActionButtons();
+  updateClearStorageButton();
 }
 
 function buildScreenshotBlock(tab) {
@@ -640,6 +661,12 @@ async function loadReport() {
     });
   });
   document.getElementById("btn-print").addEventListener("click", printReport);
+  document.getElementById("btn-clear-storage").addEventListener("click", () => {
+    clearStoredReport().catch((err) => {
+      alert(`Could not clear stored report: ${err?.message || err}`);
+    });
+  });
+  updateClearStorageButton();
 
   if (!reportData?.tabs?.length) {
     updateMeta();

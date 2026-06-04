@@ -90,3 +90,18 @@ async function loadTabReport() {
   }
   return legacy;
 }
+
+async function clearTabReport() {
+  const db = await openReportDb();
+  try {
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(REPORT_STORE, "readwrite");
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.objectStore(REPORT_STORE).delete(REPORT_IDB_KEY);
+    });
+  } finally {
+    db.close();
+  }
+  await clearLegacyChromeReport();
+}

@@ -360,6 +360,24 @@ body {
   padding: 48px 16px;
 }
 
+.report-footer {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid #ddd;
+}
+
+.report-storage-note {
+  margin: 0 0 12px;
+  color: #666;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.btn-clear-storage {
+  width: 100%;
+  max-width: 280px;
+}
+
 @media print {
   body {
     padding: 0;
@@ -369,6 +387,7 @@ body {
 
   .report-actions,
   .report-hint,
+  .report-footer,
   .tab-card-toolbar {
     display: none !important;
   }
