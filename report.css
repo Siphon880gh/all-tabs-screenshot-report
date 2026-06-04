@@ -171,6 +171,53 @@ body {
   line-height: 1.45;
 }
 
+.tab-notes-wrap {
+  display: block;
+  margin-top: 12px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.tab-notes-label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #777;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tab-notes {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 0.88rem;
+  line-height: 1.4;
+  color: #1a1a1a;
+  background: #fafafa;
+  resize: vertical;
+  min-height: 2.8em;
+}
+
+.tab-notes:focus {
+  outline: none;
+  border-color: #8fa3d4;
+  background: #fff;
+  box-shadow: 0 0 0 2px rgba(26, 86, 219, 0.12);
+}
+
+.tab-notes::placeholder {
+  color: #999;
+}
+
 .tab-screenshot {
   display: block;
   max-width: 100%;
@@ -260,6 +307,22 @@ body {
 }
 
 .report-root.is-thumbnail-view .tab-card-url {
+  display: block;
+  margin: 4px 0 0;
+  font-size: 0.68rem;
+  line-height: 1.25;
+}
+
+.report-root.is-thumbnail-view .tab-card-url a,
+.report-root.is-thumbnail-view .tab-card-url .tab-card-url-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  word-break: break-all;
+}
+
+.report-root.is-thumbnail-view .tab-card-url .btn-open-settings {
   display: none;
 }
 
@@ -298,6 +361,23 @@ body {
 .report-root.is-thumbnail-view .screenshot-error strong {
   margin: 0;
   font-size: 0.62rem;
+}
+
+.report-root.is-thumbnail-view .tab-notes-wrap {
+  margin-top: 8px;
+  flex-shrink: 0;
+}
+
+.report-root.is-thumbnail-view .tab-notes-label {
+  margin-bottom: 2px;
+  font-size: 0.62rem;
+}
+
+.report-root.is-thumbnail-view .tab-notes {
+  padding: 5px 7px;
+  font-size: 0.72rem;
+  min-height: 2.4em;
+  resize: none;
 }
 
 /* Dragged card stays in the list and slides into its new slot */
@@ -422,5 +502,10 @@ body {
   .tab-card-url a {
     color: #1a1a1a;
     text-decoration: underline;
+  }
+
+  .tab-notes {
+    border-color: #ccc;
+    background: #fff;
   }
 }

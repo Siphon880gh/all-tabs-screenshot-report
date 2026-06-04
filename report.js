@@ -13,6 +13,51 @@ function isNonNavigableUrl(url = "") {
   );
 }
 
+function debounce(fn, delayMs) {
+  let timeoutId = null;
+  return (...args) => {
+    if (timeoutId) clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => {
+      timeoutId = null;
+      fn(...args);
+    }, delayMs);
+  };
+}
+
+const saveReportDebounced = debounce(() => {
+  saveReport().catch(() => {});
+}, 400);
+
+function buildNotesBlock(tab) {
+  const value = tab.notes ? escapeHtml(tab.notes) : "";
+  return `
+    <label class="tab-notes-wrap">
+      <span class="tab-notes-label">Notes</span>
+      <textarea class="tab-notes" rows="2" placeholder="Add notes or comments…" aria-label="Notes for ${escapeAttr(tab.title)}">${value}</textarea>
+    </label>`;
+}
+
+function buildExportNotesBlock(tab) {
+  const notes = (tab.notes || "").trim();
+  if (!notes) return "";
+  return `
+        <div class="tab-notes-export-wrap">
+          <span class="tab-notes-label">Notes</span>
+          <div class="tab-notes-rendered">${escapeHtml(notes)}</div>
+        </div>`;
+}
+
+function syncNotesFromDom() {
+  const root = document.getElementById("report-root");
+  if (!root || !reportData?.tabs) return;
+  root.querySelectorAll(".tab-card").forEach((card, i) => {
+    const notesEl = card.querySelector(".tab-notes");
+    if (notesEl && reportData.tabs[i]) {
+      reportData.tabs[i].notes = notesEl.value;
+    }
+  });
+}
+
 function buildUrlBlock(tab) {
   if (tab.openExtensionSettings) {
     return `
@@ -78,7 +123,9 @@ function dataUrlToBlob(dataUrl) {
   return new Blob([bytes], { type: mime });
 }
 
-const EXPORT_STYLES = `
+function getExportStyles() {
+  const thumbnail = viewMode === "thumbnail" && !reportData?.screenshotsSkipped;
+  return `
 :root {
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
   color: #1a1a1a;
@@ -87,7 +134,7 @@ const EXPORT_STYLES = `
 body {
   margin: 0;
   padding: 24px;
-  max-width: 960px;
+  max-width: ${thumbnail ? "none" : "960px"};
   margin-inline: auto;
 }
 .report-header { margin-bottom: 24px; }
@@ -101,18 +148,52 @@ body {
   padding: 16px 20px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
+.tab-card-body { display: flex; flex-direction: column; gap: 12px; }
+.tab-card-info { order: 1; }
+.tab-card-media { order: 2; }
 .tab-card-info h2 {
   margin: 0 0 8px;
   font-size: 1.1rem;
   line-height: 1.35;
   word-break: break-word;
 }
+.tab-card-info p { margin: 0 0 12px; }
+.tab-card-info p:last-child { margin-bottom: 0; }
 .tab-card-url a { color: #1a56db; word-break: break-all; }
 .tab-description {
   margin: 0 0 12px;
   color: #444;
   font-size: 0.9rem;
   line-height: 1.45;
+}
+.tab-notes-export-wrap {
+  display: block;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #eee;
+  width: 100%;
+  box-sizing: border-box;
+}
+.tab-notes-label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #777;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.tab-notes-rendered {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid #e8e8e8;
+  border-radius: 6px;
+  font-size: 0.88rem;
+  line-height: 1.4;
+  color: #1a1a1a;
+  background: #fafafa;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 .tab-screenshot {
   display: block;
@@ -136,7 +217,112 @@ body {
   box-sizing: border-box;
 }
 .screenshot-error strong { color: #333; margin-bottom: 8px; }
-`.trim();
+${
+  thumbnail
+    ? `
+.report-root.is-thumbnail-view {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+.report-root.is-thumbnail-view .tab-card {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 12px;
+  min-width: 0;
+  overflow: hidden;
+}
+.report-root.is-thumbnail-view .tab-card-body {
+  flex-direction: row;
+  gap: 10px;
+  align-items: flex-start;
+  min-width: 0;
+}
+.report-root.is-thumbnail-view .tab-card-media {
+  order: 1;
+  flex: 0 0 112px;
+  width: 112px;
+  min-width: 112px;
+}
+.report-root.is-thumbnail-view .tab-card-info {
+  order: 2;
+  flex: 1;
+  min-width: 0;
+}
+.report-root.is-thumbnail-view .tab-card-info h2 {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+.report-root.is-thumbnail-view .tab-card-url {
+  display: block;
+  margin: 4px 0 0;
+  font-size: 0.68rem;
+  line-height: 1.25;
+}
+.report-root.is-thumbnail-view .tab-card-url a {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  word-break: break-all;
+}
+.report-root.is-thumbnail-view .tab-description {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: #555;
+}
+.report-root.is-thumbnail-view .tab-screenshot {
+  width: 112px;
+  height: 72px;
+  max-width: none;
+  object-fit: cover;
+  object-position: top left;
+}
+.report-root.is-thumbnail-view .screenshot-error {
+  width: 112px;
+  height: 72px;
+  min-height: 0;
+  padding: 6px;
+  font-size: 0.62rem;
+  line-height: 1.2;
+}
+.report-root.is-thumbnail-view .screenshot-error strong {
+  margin: 0;
+  font-size: 0.62rem;
+}
+.report-root.is-thumbnail-view .tab-notes-export-wrap {
+  margin-top: 8px;
+  padding-top: 8px;
+  flex-shrink: 0;
+}
+.report-root.is-thumbnail-view .tab-notes-label {
+  margin-bottom: 2px;
+  font-size: 0.62rem;
+}
+.report-root.is-thumbnail-view .tab-notes-rendered {
+  padding: 5px 7px;
+  font-size: 0.72rem;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+  white-space: normal;
+}
+`
+    : ""
+}`.trim();
+}
 
 function buildExportScreenshotBlock(tab, index) {
   if (reportData?.screenshotsSkipped) {
@@ -161,18 +347,34 @@ function buildExportHtml() {
   const skippedNote = reportData.screenshotsSkipped
     ? " · Screenshots not taken (your choice)"
     : "";
-  const meta = `${count} tab${count === 1 ? "" : "s"} · Generated ${formatGeneratedAt(reportData.generatedAt)}${skippedNote}${failed ? ` · ${failed} without screenshot` : ""}`;
+  const layoutNote =
+    viewMode === "thumbnail" && !reportData.screenshotsSkipped
+      ? " · Thumbnail layout"
+      : "";
+  const meta = `${count} tab${count === 1 ? "" : "s"} · Generated ${formatGeneratedAt(reportData.generatedAt)}${skippedNote}${layoutNote}${failed ? ` · ${failed} without screenshot` : ""}`;
+
+  const thumbnailExport =
+    viewMode === "thumbnail" && !reportData.screenshotsSkipped;
+  const rootClass = thumbnailExport ? ' class="report-root is-thumbnail-view"' : ' class="report-root"';
+
+  const screenshotSection = (tab, index) => {
+    const block = buildExportScreenshotBlock(tab, index);
+    return block ? `<div class="tab-card-media">${block}</div>` : "";
+  };
 
   const cards = reportData.tabs
     .map(
       (tab, index) => `
     <section class="tab-card">
-      <div class="tab-card-info">
-        <h2>${escapeHtml(tab.title)}</h2>
-        ${buildUrlBlock(tab)}
-        ${tab.description ? `<p class="tab-description">${escapeHtml(tab.description)}</p>` : ""}
+      <div class="tab-card-body">
+        <div class="tab-card-info">
+          <h2>${escapeHtml(tab.title)}</h2>
+          ${buildUrlBlock(tab)}
+          ${tab.description ? `<p class="tab-description">${escapeHtml(tab.description)}</p>` : ""}
+        </div>
+        ${screenshotSection(tab, index)}
       </div>
-      ${buildExportScreenshotBlock(tab, index)}
+      ${buildExportNotesBlock(tab)}
     </section>`
     )
     .join("\n");
@@ -183,14 +385,14 @@ function buildExportHtml() {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Tab Screenshot Report</title>
-    <style>${EXPORT_STYLES}</style>
+    <style>${getExportStyles()}</style>
   </head>
   <body>
     <header class="report-header">
       <h1>Tab Screenshot Report</h1>
       <p class="report-meta">${escapeHtml(meta)}</p>
     </header>
-    <main class="report-root">
+    <main${rootClass}>
 ${cards}
     </main>
   </body>
@@ -207,6 +409,8 @@ async function writeFileToDirectory(dirHandle, filename, blob) {
 
 async function exportReport() {
   if (!reportData?.tabs?.length) return;
+
+  syncNotesFromDom();
 
   if (typeof window.showDirectoryPicker !== "function") {
     alert("Export requires a browser that supports folder selection (Chrome or Edge).");
@@ -408,7 +612,18 @@ function createTabCard(tab, index) {
           : `<div class="tab-card-media">${buildScreenshotBlock(tab)}</div>`
       }
     </div>
+    ${buildNotesBlock(tab)}
   `;
+
+  const notesEl = card.querySelector(".tab-notes");
+  if (notesEl) {
+    notesEl.addEventListener("input", () => {
+      reportData.tabs[index].notes = notesEl.value;
+      saveReportDebounced();
+    });
+    notesEl.addEventListener("mousedown", (e) => e.stopPropagation());
+    notesEl.addEventListener("click", (e) => e.stopPropagation());
+  }
 
   const settingsBtn = card.querySelector(".btn-open-settings");
   if (settingsBtn) {
