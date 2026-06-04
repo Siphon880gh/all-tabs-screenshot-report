@@ -1,5 +1,39 @@
-const STORAGE_KEY = "tabReport";
 const VIEW_MODE_KEY = "reportViewMode";
+
+function isNonNavigableUrl(url = "") {
+  return (
+    url.startsWith("chrome://") ||
+    url.startsWith("chrome-extension://") ||
+    url.startsWith("edge://") ||
+    url.startsWith("about:") ||
+    url.startsWith("devtools://") ||
+    url.startsWith("file://") ||
+    url.startsWith("view-source:") ||
+    url.startsWith("chrome-untrusted://")
+  );
+}
+
+function buildUrlBlock(tab) {
+  if (tab.openExtensionSettings) {
+    return `
+        <p class="tab-card-url">
+          <span class="tab-card-url-text">Extension settings</span>
+          <button type="button" class="btn-open-settings">Open extension settings</button>
+        </p>`;
+  }
+
+  const url = tab.url || "";
+  if (!url || isNonNavigableUrl(url)) {
+    return `<p class="tab-card-url"><span class="tab-card-url-text">${escapeHtml(url || "(no URL)")}</span></p>`;
+  }
+
+  return `
+        <p class="tab-card-url">
+          <a href="${escapeAttr(url)}" target="_blank" rel="noopener noreferrer">
+            ${escapeHtml(url)}
+          </a>
+        </p>`;
+}
 
 /** @type {"full" | "thumbnail"} */
 let viewMode = "full";
@@ -28,8 +62,9 @@ function formatGeneratedAt(iso) {
   }
 }
 
-function screenshotFilename(index) {
-  return `screenshot${String(index + 1).padStart(2, "0")}.png`;
+function screenshotFilename(index, dataUrl = "") {
+  const ext = dataUrl.includes("image/jpeg") ? "jpg" : "png";
+  return `screenshot${String(index + 1).padStart(2, "0")}.${ext}`;
 }
 
 function dataUrlToBlob(dataUrl) {
@@ -105,7 +140,7 @@ body {
 
 function buildExportScreenshotBlock(tab, index) {
   if (tab.screenshot) {
-    const filename = screenshotFilename(index);
+    const filename = screenshotFilename(index, tab.screenshot || "");
     return `<img class="tab-screenshot" src="${escapeAttr(filename)}" alt="Screenshot of ${escapeAttr(tab.title)}">`;
   }
   return `<div class="screenshot-error">
@@ -125,11 +160,7 @@ function buildExportHtml() {
     <section class="tab-card">
       <div class="tab-card-info">
         <h2>${escapeHtml(tab.title)}</h2>
-        <p class="tab-card-url">
-          <a href="${escapeAttr(tab.url)}" target="_blank" rel="noopener noreferrer">
-            ${escapeHtml(tab.url || "(no URL)")}
-          </a>
-        </p>
+        ${buildUrlBlock(tab)}
         ${tab.description ? `<p class="tab-description">${escapeHtml(tab.description)}</p>` : ""}
       </div>
       ${buildExportScreenshotBlock(tab, index)}
@@ -191,7 +222,7 @@ async function exportReport() {
       if (tab.screenshot) {
         await writeFileToDirectory(
           dirHandle,
-          screenshotFilename(i),
+          screenshotFilename(i, tab.screenshot),
           dataUrlToBlob(tab.screenshot)
         );
       }
@@ -260,7 +291,7 @@ function updateActionButtons() {
 async function saveReport() {
   if (!reportData) return;
   reportData.tabCount = reportData.tabs.length;
-  await chrome.storage.local.set({ [STORAGE_KEY]: reportData });
+  await saveTabReport(reportData);
 }
 
 function updateMeta() {
@@ -310,11 +341,7 @@ function createTabCard(tab, index) {
     <div class="tab-card-body">
       <div class="tab-card-info">
         <h2>${escapeHtml(tab.title)}</h2>
-        <p class="tab-card-url">
-          <a href="${escapeAttr(tab.url)}" target="_blank" rel="noopener noreferrer">
-            ${escapeHtml(tab.url || "(no URL)")}
-          </a>
-        </p>
+        ${buildUrlBlock(tab)}
         ${
           tab.description
             ? `<p class="tab-description">${escapeHtml(tab.description)}</p>`
@@ -324,6 +351,15 @@ function createTabCard(tab, index) {
       <div class="tab-card-media">${buildScreenshotBlock(tab)}</div>
     </div>
   `;
+
+  const settingsBtn = card.querySelector(".btn-open-settings");
+  if (settingsBtn) {
+    settingsBtn.addEventListener("click", () => {
+      chrome.tabs.create({
+        url: `chrome://extensions/?id=${chrome.runtime.id}`,
+      });
+    });
+  }
 
   card.querySelector(".btn-delete").addEventListener("click", (e) => {
     e.stopPropagation();
@@ -585,8 +621,8 @@ function renderReport() {
 }
 
 async function loadReport() {
-  const stored = await chrome.storage.local.get([STORAGE_KEY, VIEW_MODE_KEY]);
-  reportData = stored[STORAGE_KEY] ?? null;
+  const stored = await chrome.storage.local.get([VIEW_MODE_KEY]);
+  reportData = await loadTabReport();
   if (stored[VIEW_MODE_KEY] === "thumbnail" || stored[VIEW_MODE_KEY] === "full") {
     viewMode = stored[VIEW_MODE_KEY];
   }

@@ -1,5 +1,7 @@
-const STORAGE_KEY = "tabReport";
+importScripts("report-storage.js");
+
 const TAB_PREPARE_DELAY_MS = 600;
+const CAPTURE_OPTIONS = { format: "jpeg", quality: 72 };
 
 const SITE_ACCESS_HELP =
   'Enable "On all sites" for this extension: open chrome://extensions, find "Tab Screenshot Report", set Site access to "On all sites", then click Reload.';
@@ -144,17 +146,15 @@ async function ensureHostPermissions() {
 }
 
 async function captureTabImage(tab) {
-  const options = { format: "png" };
-
   if (typeof chrome.tabs.captureTab === "function") {
     try {
-      return await chrome.tabs.captureTab(tab.id, options);
+      return await chrome.tabs.captureTab(tab.id, CAPTURE_OPTIONS);
     } catch {
       // fall through to visible-tab capture
     }
   }
 
-  return chrome.tabs.captureVisibleTab(tab.windowId, options);
+  return chrome.tabs.captureVisibleTab(tab.windowId, CAPTURE_OPTIONS);
 }
 
 async function captureTabSafely(tab) {
@@ -259,7 +259,7 @@ async function buildTabReport() {
     tabs: results,
   };
 
-  await chrome.storage.local.set({ [STORAGE_KEY]: report });
+  await saveTabReport(report);
 
   const reportUrl = chrome.runtime.getURL("report.html");
   await chrome.tabs.create({ url: reportUrl });
@@ -269,22 +269,21 @@ chrome.action.onClicked.addListener(() => {
   buildTabReport().catch(async (err) => {
     console.error("Tab report failed:", err);
 
-    await chrome.storage.local.set({
-      [STORAGE_KEY]: {
-        generatedAt: new Date().toISOString(),
-        tabCount: 1,
-        tabs: [
-          {
-            id: 0,
-            windowId: 0,
-            title: "Permission required",
-            url: `chrome://extensions/?id=${chrome.runtime.id}`,
-            screenshot: null,
-            description: null,
-            error: err?.message || SITE_ACCESS_HELP,
-          },
-        ],
-      },
+    await saveTabReport({
+      generatedAt: new Date().toISOString(),
+      tabCount: 1,
+      tabs: [
+        {
+          id: 0,
+          windowId: 0,
+          title: "Permission required",
+          url: "",
+          openExtensionSettings: true,
+          screenshot: null,
+          description: null,
+          error: err?.message || SITE_ACCESS_HELP,
+        },
+      ],
     });
 
     await chrome.tabs.create({ url: chrome.runtime.getURL("report.html") });
