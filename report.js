@@ -139,6 +139,10 @@ body {
 `.trim();
 
 function buildExportScreenshotBlock(tab, index) {
+  if (reportData?.screenshotsSkipped) {
+    return "";
+  }
+
   if (tab.screenshot) {
     const filename = screenshotFilename(index, tab.screenshot || "");
     return `<img class="tab-screenshot" src="${escapeAttr(filename)}" alt="Screenshot of ${escapeAttr(tab.title)}">`;
@@ -151,8 +155,13 @@ function buildExportScreenshotBlock(tab, index) {
 
 function buildExportHtml() {
   const count = reportData.tabs.length;
-  const failed = reportData.tabs.filter((t) => !t.screenshot).length;
-  const meta = `${count} tab${count === 1 ? "" : "s"} · Generated ${formatGeneratedAt(reportData.generatedAt)}${failed ? ` · ${failed} without screenshot` : ""}`;
+  const failed = reportData.screenshotsSkipped
+    ? 0
+    : reportData.tabs.filter((t) => !t.screenshot).length;
+  const skippedNote = reportData.screenshotsSkipped
+    ? " · Screenshots not taken (your choice)"
+    : "";
+  const meta = `${count} tab${count === 1 ? "" : "s"} · Generated ${formatGeneratedAt(reportData.generatedAt)}${skippedNote}${failed ? ` · ${failed} without screenshot` : ""}`;
 
   const cards = reportData.tabs
     .map(
@@ -282,10 +291,26 @@ function toggleViewMode() {
 
 function updateActionButtons() {
   const hasTabs = Boolean(reportData?.tabs?.length);
+  const hasScreenshots = hasTabs && !reportData?.screenshotsSkipped;
   document.getElementById("btn-export").disabled = !hasTabs;
   document.getElementById("btn-print").disabled = !hasTabs;
   const viewBtn = document.getElementById("btn-view-toggle");
-  if (viewBtn) viewBtn.disabled = !hasTabs;
+  if (viewBtn) viewBtn.disabled = !hasScreenshots;
+}
+
+function updateScreenshotStatus() {
+  const el = document.getElementById("report-screenshot-status");
+  if (!el) return;
+
+  if (reportData?.screenshotsSkipped) {
+    el.textContent =
+      "You chose not to take screenshots for this report. Titles, URLs, and descriptions are included.";
+    el.hidden = false;
+    return;
+  }
+
+  el.hidden = true;
+  el.textContent = "";
 }
 
 async function saveReport() {
@@ -324,6 +349,7 @@ function updateMeta() {
       : "";
     root.replaceChildren();
     empty.hidden = false;
+    updateScreenshotStatus();
     updateActionButtons();
     updateClearStorageButton();
     return;
@@ -331,13 +357,20 @@ function updateMeta() {
 
   empty.hidden = true;
   const count = reportData.tabs.length;
-  const failed = reportData.tabs.filter((t) => !t.screenshot).length;
+  const failed = reportData.screenshotsSkipped
+    ? 0
+    : reportData.tabs.filter((t) => !t.screenshot).length;
   meta.textContent = `${count} tab${count === 1 ? "" : "s"} · Generated ${formatGeneratedAt(reportData.generatedAt)}${failed ? ` · ${failed} without screenshot` : ""} · Drag to reorder`;
+  updateScreenshotStatus();
   updateActionButtons();
   updateClearStorageButton();
 }
 
 function buildScreenshotBlock(tab) {
+  if (reportData?.screenshotsSkipped) {
+    return "";
+  }
+
   if (tab.screenshot) {
     return `<img class="tab-screenshot" src="${tab.screenshot}" alt="Screenshot of ${escapeAttr(tab.title)}">`;
   }
@@ -369,7 +402,11 @@ function createTabCard(tab, index) {
             : ""
         }
       </div>
-      <div class="tab-card-media">${buildScreenshotBlock(tab)}</div>
+      ${
+        reportData?.screenshotsSkipped
+          ? ""
+          : `<div class="tab-card-media">${buildScreenshotBlock(tab)}</div>`
+      }
     </div>
   `;
 
@@ -646,6 +683,9 @@ async function loadReport() {
   reportData = await loadTabReport();
   if (stored[VIEW_MODE_KEY] === "thumbnail" || stored[VIEW_MODE_KEY] === "full") {
     viewMode = stored[VIEW_MODE_KEY];
+  }
+  if (reportData?.screenshotsSkipped) {
+    viewMode = "full";
   }
 
   const root = document.getElementById("report-root");

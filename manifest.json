@@ -1,12 +1,13 @@
 {
   "manifest_version": 3,
-  "name": "Tab Screenshot Report",
-  "version": "1.0.3",
+  "name": "All Tabs Screenshot Report",
+  "version": "1.0.4",
   "description": "URLs, descriptions & screenshots for every tab. Export HTML/PNGs for AI agent research context—also QA, bugs, handoffs, or archives.",
   "permissions": ["tabs", "activeTab", "scripting", "storage"],
   "host_permissions": ["<all_urls>"],
   "action": {
-    "default_title": "Create Tab Report"
+    "default_title": "Create Tab Report",
+    "default_popup": "popup.html"
   },
   "background": {
     "service_worker": "background.js"

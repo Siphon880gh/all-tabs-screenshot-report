@@ -1,0 +1,55 @@
+:root {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: #1a1a1a;
+}
+
+body {
+  margin: 0;
+  min-width: 260px;
+}
+
+.popup-menu {
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+}
+
+.popup-option {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+.popup-option:hover:not(:disabled) {
+  background: #f0f0f0;
+}
+
+.popup-option:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.popup-option-primary {
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.popup-option-secondary {
+  font-weight: 400;
+  color: #666;
+}
+
+.popup-status {
+  margin: 0;
+  padding: 0 12px 10px;
+  font-size: 0.78rem;
+  color: #555;
+}

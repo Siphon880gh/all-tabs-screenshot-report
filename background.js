@@ -210,6 +210,20 @@ async function captureTabSafely(tab) {
   return result;
 }
 
+async function processTabWithoutScreenshot(tab) {
+  const result = tabResultFromTab(tab);
+
+  if (!isProbablyRestrictedUrl(result.url)) {
+    try {
+      result.description = await fetchPageDescription(tab);
+    } catch {
+      result.description = null;
+    }
+  }
+
+  return result;
+}
+
 async function getOriginalActiveTab() {
   const tabs = await chrome.tabs.query({
     active: true,
@@ -228,10 +242,12 @@ async function restoreActiveTab(tab) {
   }
 }
 
-async function buildTabReport() {
-  await ensureHostPermissions();
+async function buildTabReport({ includeScreenshots = true } = {}) {
+  if (includeScreenshots) {
+    await ensureHostPermissions();
+  }
 
-  const originalTab = await getOriginalActiveTab();
+  const originalTab = includeScreenshots ? await getOriginalActiveTab() : null;
   const allTabs = await chrome.tabs.query({});
   const results = [];
 
@@ -241,7 +257,9 @@ async function buildTabReport() {
     }
 
     try {
-      const result = await captureTabSafely(tab);
+      const result = includeScreenshots
+        ? await captureTabSafely(tab)
+        : await processTabWithoutScreenshot(tab);
       results.push(result);
     } catch (err) {
       results.push({
@@ -251,12 +269,15 @@ async function buildTabReport() {
     }
   }
 
-  await restoreActiveTab(originalTab);
+  if (includeScreenshots) {
+    await restoreActiveTab(originalTab);
+  }
 
   const report = {
     generatedAt: new Date().toISOString(),
     tabCount: results.length,
     tabs: results,
+    screenshotsSkipped: !includeScreenshots,
   };
 
   await saveTabReport(report);
@@ -265,27 +286,43 @@ async function buildTabReport() {
   await chrome.tabs.create({ url: reportUrl });
 }
 
-chrome.action.onClicked.addListener(() => {
-  buildTabReport().catch(async (err) => {
-    console.error("Tab report failed:", err);
+async function handleReportFailure(err) {
+  console.error("Tab report failed:", err);
 
-    await saveTabReport({
-      generatedAt: new Date().toISOString(),
-      tabCount: 1,
-      tabs: [
-        {
-          id: 0,
-          windowId: 0,
-          title: "Permission required",
-          url: "",
-          openExtensionSettings: true,
-          screenshot: null,
-          description: null,
-          error: err?.message || SITE_ACCESS_HELP,
-        },
-      ],
+  await saveTabReport({
+    generatedAt: new Date().toISOString(),
+    tabCount: 1,
+    tabs: [
+      {
+        id: 0,
+        windowId: 0,
+        title: "Permission required",
+        url: "",
+        openExtensionSettings: true,
+        screenshot: null,
+        description: null,
+        error: err?.message || SITE_ACCESS_HELP,
+      },
+    ],
+    screenshotsSkipped: false,
+  });
+
+  await chrome.tabs.create({ url: chrome.runtime.getURL("report.html") });
+}
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.action !== "buildReport") {
+    return;
+  }
+
+  const includeScreenshots = message.includeScreenshots !== false;
+
+  buildTabReport({ includeScreenshots })
+    .then(() => sendResponse({ ok: true }))
+    .catch(async (err) => {
+      await handleReportFailure(err);
+      sendResponse({ ok: true });
     });
 
-    await chrome.tabs.create({ url: chrome.runtime.getURL("report.html") });
-  });
+  return true;
 });

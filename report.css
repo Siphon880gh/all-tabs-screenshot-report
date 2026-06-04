@@ -61,6 +61,17 @@ body {
   font-size: 0.9rem;
 }
 
+.report-screenshot-status {
+  margin: 0 0 4px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: #eef4ff;
+  border: 1px solid #c5d4f5;
+  color: #2a4a8a;
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
 .report-hint {
   margin: 0;
   color: #888;
@@ -387,6 +398,7 @@ body {
 
   .report-actions,
   .report-hint,
+  .report-screenshot-status,
   .report-footer,
   .tab-card-toolbar {
     display: none !important;
