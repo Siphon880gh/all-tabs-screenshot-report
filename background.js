@@ -822,11 +822,18 @@ async function buildTabReport({ includeScreenshots = true } = {}) {
     await ensureHostPermissions();
   }
 
-  const originalTab = includeScreenshots ? await getOriginalActiveTab() : null;
-  const allTabs = await chrome.tabs.query({});
+  const focusTab = await getOriginalActiveTab();
+  const originalTab = includeScreenshots ? focusTab : null;
+  const windowId = focusTab?.windowId;
+
+  if (windowId == null) {
+    throw new Error("Could not determine the current window");
+  }
+
+  const windowTabs = await chrome.tabs.query({ windowId });
   const results = [];
 
-  for (const tab of allTabs) {
+  for (const tab of windowTabs) {
     if (tab.url?.startsWith(chrome.runtime.getURL(""))) {
       continue;
     }
