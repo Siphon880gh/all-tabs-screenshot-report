@@ -1252,9 +1252,12 @@ function buildScreenshotBlock(tab) {
   const fullPageBadge = tab.screenshotFullPage
     ? `<span class="screenshot-mode-badge" title="Full-page screenshot">Full page</span>`
     : "";
+  const scaledBadge = tab.screenshotScaled
+    ? `<span class="screenshot-mode-badge screenshot-mode-badge-scaled" title="Long page downscaled to fit browser limits">Scaled</span>`
+    : "";
 
   if (tab.screenshot) {
-    return `${fullPageBadge}<img class="tab-screenshot" src="${tab.screenshot}" alt="Screenshot of ${escapeAttr(tab.title)}">`;
+    return `${fullPageBadge}${scaledBadge}<img class="tab-screenshot" src="${tab.screenshot}" alt="Screenshot of ${escapeAttr(tab.title)}">`;
   }
   return `<div class="screenshot-error" title="${escapeAttr(tab.error || "Unknown error")}">
     <strong>Screenshot unavailable</strong>
@@ -1396,7 +1399,7 @@ async function retakeFullScreenshot(card, index) {
       throw new Error("Could not start screenshot. Reload the extension and try again.");
     }
 
-    const response = await waitForRetakeScreenshotResult(requestId);
+    const response = await waitForRetakeScreenshotResult(requestId, 300000);
     const result = response?.result;
 
     if (!response?.ok) {
@@ -1411,10 +1414,12 @@ async function retakeFullScreenshot(card, index) {
       tab.error = result.error;
       tab.screenshot = null;
       tab.screenshotFullPage = false;
+      tab.screenshotScaled = false;
     } else {
       tab.error = result.error || null;
       tab.screenshot = result.screenshot;
       tab.screenshotFullPage = Boolean(result.screenshotFullPage);
+      tab.screenshotScaled = Boolean(result.screenshotScaled);
       tab.seo = result.seo ?? null;
       tab.description = result.description ?? null;
       if (result.title) tab.title = result.title;

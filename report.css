@@ -765,6 +765,11 @@ body {
   pointer-events: none;
 }
 
+.screenshot-mode-badge-scaled {
+  top: 30px;
+  background: rgba(90, 74, 26, 0.9);
+}
+
 .btn-delete {
   flex-shrink: 0;
   margin-left: auto;

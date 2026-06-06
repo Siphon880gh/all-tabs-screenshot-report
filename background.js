@@ -2,7 +2,7 @@ importScripts("report-storage.js");
 
 const TAB_PREPARE_DELAY_MS = 600;
 const FULL_CAPTURE_SCROLL_SETTLE_MS = 250;
-const FULL_CAPTURE_MAX_SLICES = 40;
+const FULL_CAPTURE_MAX_OUTPUT_HEIGHT_PX = 16384;
 const CAPTURE_OPTIONS = { format: "jpeg", quality: 72 };
 const CAPTURE_QUOTA_PER_SECOND =
   typeof chrome.tabs.MAX_CAPTURE_VISIBLE_TAB_CALLS_PER_SECOND === "number"
@@ -540,40 +540,64 @@ async function blobToDataUrl(blob) {
   });
 }
 
+async function loadCaptureImage(dataUrl) {
+  const response = await fetch(dataUrl);
+  const blob = await response.blob();
+  return createImageBitmap(blob);
+}
+
+function drawCaptureSlice(ctx, img, captureIndex, captures, metrics, scale, canvasHeight) {
+  const { devicePixelRatio } = metrics;
+  const yPx = Math.round(captures[captureIndex].y * devicePixelRatio * scale);
+  const destWidth = Math.max(1, Math.round(img.width * scale));
+  const destHeight = Math.max(1, Math.round(img.height * scale));
+
+  if (captureIndex === captures.length - 1) {
+    const usedHeight = canvasHeight - yPx;
+    if (usedHeight > 0 && usedHeight < destHeight) {
+      const srcUsedHeight = Math.max(1, Math.round(usedHeight / scale));
+      const cropY = img.height - srcUsedHeight;
+      ctx.drawImage(
+        img,
+        0,
+        cropY,
+        img.width,
+        srcUsedHeight,
+        0,
+        yPx,
+        destWidth,
+        usedHeight
+      );
+      return;
+    }
+  }
+
+  ctx.drawImage(img, 0, 0, img.width, img.height, 0, yPx, destWidth, destHeight);
+}
+
 async function stitchCaptureSlices(captures, metrics) {
   if (captures.length === 1) {
-    return captures[0].dataUrl;
+    return { dataUrl: captures[0].dataUrl, scaled: false };
   }
 
   const { scrollHeight, devicePixelRatio } = metrics;
-  const images = await Promise.all(
-    captures.map(async ({ dataUrl }) => {
-      const response = await fetch(dataUrl);
-      const blob = await response.blob();
-      return createImageBitmap(blob);
-    })
-  );
+  const naturalHeight = Math.round(scrollHeight * devicePixelRatio);
+  const scale = Math.min(1, FULL_CAPTURE_MAX_OUTPUT_HEIGHT_PX / naturalHeight);
+  const scaled = scale < 1;
+  const canvasHeight = Math.max(1, Math.round(naturalHeight * scale));
 
-  const sliceWidth = images[0].width;
-  const totalHeight = Math.round(scrollHeight * devicePixelRatio);
-  const canvas = new OffscreenCanvas(sliceWidth, totalHeight);
+  const firstImg = await loadCaptureImage(captures[0].dataUrl);
+  const canvasWidth = Math.max(1, Math.round(firstImg.width * scale));
+  const canvas = new OffscreenCanvas(canvasWidth, canvasHeight);
   const ctx = canvas.getContext("2d");
 
-  for (let i = 0; i < images.length; i += 1) {
-    const yPx = Math.round(captures[i].y * devicePixelRatio);
-    const img = images[i];
+  drawCaptureSlice(ctx, firstImg, 0, captures, metrics, scale, canvasHeight);
+  firstImg.close();
 
-    if (i === images.length - 1) {
-      const usedHeight = totalHeight - yPx;
-      if (usedHeight > 0 && usedHeight < img.height) {
-        const cropY = img.height - usedHeight;
-        ctx.drawImage(img, 0, cropY, img.width, usedHeight, 0, yPx, img.width, usedHeight);
-      } else {
-        ctx.drawImage(img, 0, yPx);
-      }
-    } else {
-      ctx.drawImage(img, 0, yPx);
-    }
+  for (let i = 1; i < captures.length; i += 1) {
+    const img = await loadCaptureImage(captures[i].dataUrl);
+    drawCaptureSlice(ctx, img, i, captures, metrics, scale, canvasHeight);
+    img.close();
   }
 
   const blob = await canvas.convertToBlob({
@@ -581,7 +605,7 @@ async function stitchCaptureSlices(captures, metrics) {
     quality: CAPTURE_OPTIONS.quality / 100,
   });
 
-  return blobToDataUrl(blob);
+  return { dataUrl: await blobToDataUrl(blob), scaled };
 }
 
 async function captureFullPageTabImage(tab) {
@@ -591,11 +615,6 @@ async function captureFullPageTabImage(tab) {
   }
 
   const positions = computeScrollPositions(metrics.scrollHeight, metrics.viewportHeight);
-  if (positions.length > FULL_CAPTURE_MAX_SLICES) {
-    throw new Error(
-      `Page is too long (${positions.length} screens). Maximum is ${FULL_CAPTURE_MAX_SLICES}.`
-    );
-  }
 
   const captures = [];
   lastVisibleTabCaptureAt = 0;
@@ -698,11 +717,15 @@ async function retakeTabScreenshot({
     await prepareTab(tab);
     const freshTab = await chrome.tabs.get(tab.id);
 
-    const screenshot = fullPage
-      ? await captureFullPageTabImage(freshTab)
-      : await captureTabImage(freshTab);
+    if (fullPage) {
+      const stitched = await captureFullPageTabImage(freshTab);
+      result.screenshot = stitched.dataUrl;
+      result.screenshotScaled = stitched.scaled;
+    } else {
+      result.screenshot = await captureTabImage(freshTab);
+      result.screenshotScaled = false;
+    }
 
-    result.screenshot = screenshot;
     result.screenshotFullPage = fullPage;
     result.error = null;
     result.seo = await fetchPageSeo(freshTab);
@@ -720,6 +743,7 @@ async function retakeTabScreenshot({
     }
     result.screenshot = null;
     result.screenshotFullPage = false;
+    result.screenshotScaled = false;
   } finally {
     await restoreActiveTab(originalTab);
   }
