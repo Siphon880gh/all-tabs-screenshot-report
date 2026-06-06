@@ -58,6 +58,382 @@ function syncNotesFromDom() {
   });
 }
 
+const TOOLBAR_BTN_ICONS = {
+  fullScreenshot: `<svg class="btn-icon-svg" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" d="M2.5 5.5V2.5h3M10.5 2.5h3v3M13.5 10.5v3h-3M5.5 13.5h-3v-3"/></svg>`,
+  seo: `<svg class="btn-icon-svg" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M2 12.5V7.5h2.75v5H2zm4.375-3.75V4.5h2.75v8.25H6.375zm4.375-2.5V2.5h2.75v10H10.75z"/></svg>`,
+  delete: `<svg class="btn-icon-svg" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M5.5 3.5 6 2.5h4l.5 1H14v1H2V3.5h3.5zM3.5 5.5H14l-.85 7.65a.75.75 0 0 1-.74.65H5.13a.75.75 0 0 1-.74-.65L3.5 5.5zm2.6 1.4v5.6h1.1V6.9H6.1zm3.7 0v5.6h1.1V6.9h-1.1z"/></svg>`,
+};
+
+function buildToolbarButton(className, iconKey, label, extraAttrs = "") {
+  return `<button type="button" class="${className}" ${extraAttrs}><span class="btn-icon">${TOOLBAR_BTN_ICONS[iconKey]}</span><span class="btn-label">${label}</span></button>`;
+}
+
+function setToolbarButtonLabel(button, label) {
+  const labelEl = button?.querySelector(".btn-label");
+  if (labelEl) {
+    labelEl.textContent = label;
+  } else if (button) {
+    button.textContent = label;
+  }
+}
+
+function getToolbarButtonLabel(button) {
+  return button?.querySelector(".btn-label")?.textContent?.trim() || button?.textContent?.trim() || "";
+}
+
+function normalizeForCompare(text) {
+  return String(text || "").trim().toLowerCase();
+}
+
+function compareHeadingsForDisplay(left, right) {
+  const normalize = (text) =>
+    String(text || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, " ");
+
+  const tokenize = (text) =>
+    String(text || "")
+      .toLowerCase()
+      .replace(/[^\w\s'-]/g, " ")
+      .split(/\s+/)
+      .filter((word) => word.length > 2);
+
+  const a = normalize(left);
+  const b = normalize(right);
+  if (!a && !b) return "No title or H1";
+  if (!a) return "No H1 on page";
+  if (!b) return "No title";
+  if (a === b) return "Exact match";
+  if (a.includes(b) || b.includes(a)) return "Partial match (one contains the other)";
+
+  const wordsA = new Set(tokenize(left));
+  const wordsB = new Set(tokenize(right));
+  const shared = [...wordsA].filter((word) => wordsB.has(word));
+  const union = new Set([...wordsA, ...wordsB]).size;
+  const overlapPct = union ? Math.round((shared.length / union) * 100) : 0;
+
+  if (overlapPct >= 50) return `Similar (${overlapPct}% word overlap)`;
+  return `Different (${overlapPct}% word overlap)`;
+}
+
+function formatKeywordEntries(entries) {
+  if (!entries?.length) return "—";
+  return entries.map((entry) => `${entry.word} (${entry.density}%)`).join(", ");
+}
+
+function formatWordList(words) {
+  return words?.length ? words.join(", ") : "—";
+}
+
+function buildHeadingAnalysisBlock(tab) {
+  const seo = tab.seo;
+  if (!seo) return "";
+
+  const hasHeadingData =
+    seo.h1Count !== undefined ||
+    seo.h1 ||
+    seo.h1All?.length ||
+    seo.h1VsPageTitle ||
+    seo.firstParagraph;
+
+  if (!hasHeadingData) return "";
+
+  const rows = [];
+  const add = (label, value) => {
+    if (value !== undefined && value !== null && value !== "") {
+      rows.push(`<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(String(value))}</dd>`);
+    }
+  };
+
+  add("H1 count", seo.h1CountNote);
+  if (seo.h1Count > 0) {
+    add("Single H1", seo.singleH1 ? "Yes" : "No");
+  }
+  add("H1", seo.h1);
+  if (seo.h1All?.length) {
+    add("All H1s", seo.h1All.join(" · "));
+  }
+  add("H1 vs HTML title", seo.h1VsPageTitle);
+  if (tab.title && seo.h1) {
+    add("H1 vs tab title", compareHeadingsForDisplay(seo.h1, tab.title));
+  }
+  if (
+    seo.pageTitle &&
+    tab.title &&
+    normalizeForCompare(seo.pageTitle) !== normalizeForCompare(tab.title)
+  ) {
+    add("HTML title vs tab title", compareHeadingsForDisplay(seo.pageTitle, tab.title));
+  }
+  if (seo.firstParagraph) {
+    const wordNote = seo.firstParagraphWordCount
+      ? ` (${seo.firstParagraphWordCount} content words)`
+      : "";
+    add(`First paragraph${wordNote}`, seo.firstParagraph);
+  }
+
+  if (!rows.length) return "";
+  return `
+    <div class="tab-seo-section">
+      <p class="tab-seo-subheading">Headings & content</p>
+      <dl class="tab-seo-meta">${rows.join("")}</dl>
+    </div>`;
+}
+
+function buildKeywordAnalysisBlock(tab) {
+  const analysis = tab.seo?.keywordAnalysis;
+  if (!analysis) return "";
+
+  const overlapRows = [];
+  const addOverlap = (label, words) => {
+    overlapRows.push(
+      `<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(formatWordList(words))}</dd>`
+    );
+  };
+
+  addOverlap("In title, H1 & first paragraph", analysis.inAllThree);
+  addOverlap("In title & H1 only", analysis.inTitleAndH1);
+  addOverlap("In title & first paragraph only", analysis.inTitleAndParagraph);
+  addOverlap("In H1 & first paragraph only", analysis.inH1AndParagraph);
+
+  return `
+    <div class="tab-seo-section">
+      <p class="tab-seo-subheading">Keyword density & overlap</p>
+      <table class="tab-keyword-table">
+        <thead>
+          <tr>
+            <th scope="col">Section</th>
+            <th scope="col">Top keywords (density %)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row">Title</th>
+            <td>${escapeHtml(formatKeywordEntries(analysis.title))}</td>
+          </tr>
+          <tr>
+            <th scope="row">H1</th>
+            <td>${escapeHtml(formatKeywordEntries(analysis.h1))}</td>
+          </tr>
+          <tr>
+            <th scope="row">First paragraph</th>
+            <td>${escapeHtml(formatKeywordEntries(analysis.firstParagraph))}</td>
+          </tr>
+        </tbody>
+      </table>
+      <dl class="tab-seo-meta tab-seo-meta--overlap">${overlapRows.join("")}</dl>
+    </div>`;
+}
+
+function buildOgPreviewBlock(tab) {
+  const seo = tab.seo;
+  if (!seo) return "";
+
+  const imageUrl = seo.ogImage || seo.twitterImage;
+  if (!imageUrl) return "";
+
+  const previewTitle =
+    seo.ogTitle && normalizeForCompare(seo.ogTitle) !== normalizeForCompare(tab.title)
+      ? seo.ogTitle
+      : "";
+
+  let previewDesc = "";
+  if (!tab.description) {
+    previewDesc = seo.ogDescription || seo.description || seo.twitterDescription || "";
+  } else if (
+    seo.ogDescription &&
+    normalizeForCompare(seo.ogDescription) !== normalizeForCompare(tab.description)
+  ) {
+    previewDesc = seo.ogDescription;
+  }
+
+  const textBlock =
+    previewTitle || previewDesc
+      ? `
+        <div class="og-preview-text">
+          ${previewTitle ? `<p class="og-preview-title">${escapeHtml(previewTitle)}</p>` : ""}
+          ${previewDesc ? `<p class="og-preview-desc">${escapeHtml(previewDesc)}</p>` : ""}
+        </div>`
+      : "";
+
+  return `
+    <div class="og-preview">
+      <img class="og-preview-image" src="${escapeAttr(imageUrl)}" alt="" loading="lazy" />
+      ${textBlock}
+    </div>`;
+}
+
+function buildSeoMetaRows(tab) {
+  const seo = tab.seo;
+  if (!seo) return "";
+
+  const rows = [];
+  const add = (label, value) => {
+    if (value) {
+      rows.push(`<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd>`);
+    }
+  };
+
+  const previewImage = seo.ogImage || seo.twitterImage;
+  const ogTitleDiffers =
+    seo.ogTitle && normalizeForCompare(seo.ogTitle) !== normalizeForCompare(tab.title);
+  const ogDescDiffers =
+    seo.ogDescription &&
+    normalizeForCompare(seo.ogDescription) !== normalizeForCompare(tab.description);
+  const pageTitleDiffers =
+    seo.pageTitle && normalizeForCompare(seo.pageTitle) !== normalizeForCompare(tab.title);
+
+  if (pageTitleDiffers) add("HTML title", seo.pageTitle);
+  add("Language", seo.lang);
+
+  if (ogTitleDiffers && !previewImage) {
+    add("OG title", seo.ogTitle);
+  }
+
+  if (!tab.description && !previewImage) {
+    const desc = seo.ogDescription || seo.description || seo.twitterDescription;
+    if (desc) add("Description", desc);
+  } else if (ogDescDiffers && !previewImage) {
+    add("OG description", seo.ogDescription);
+  }
+
+  add("OG URL", seo.ogUrl);
+  add("OG type", seo.ogType);
+  add("Site name", seo.ogSiteName);
+  add("OG locale", seo.ogLocale);
+  add("OG image alt", seo.ogImageAlt);
+  if (seo.ogImageWidth || seo.ogImageHeight) {
+    add("OG image size", [seo.ogImageWidth, seo.ogImageHeight].filter(Boolean).join(" × "));
+  }
+
+  add("Twitter card", seo.twitterCard);
+  add("Twitter site", seo.twitterSite);
+  add("Twitter creator", seo.twitterCreator);
+
+  if (
+    seo.twitterTitle &&
+    normalizeForCompare(seo.twitterTitle) !== normalizeForCompare(tab.title)
+  ) {
+    add("Twitter title", seo.twitterTitle);
+  }
+
+  add("Twitter image alt", seo.twitterImageAlt);
+  add("Published", seo.articlePublished);
+  add("Modified", seo.articleModified);
+  add("Article author", seo.articleAuthor);
+  add("Article section", seo.articleSection);
+  add("Article tags", seo.articleTags);
+  add("Author", seo.author);
+  add("Canonical", seo.canonical);
+  add("Hreflang", seo.hreflang);
+  add("JSON-LD types", seo.jsonLd);
+  add("Keywords", seo.keywords);
+  add("Robots", seo.robots);
+  add("Googlebot", seo.googlebot);
+  add("Theme color", seo.themeColor);
+  add("Generator", seo.generator);
+  add("Application", seo.applicationName);
+  add("Favicon", seo.favicon);
+
+  if (!rows.length) return "";
+  return `<dl class="tab-seo-meta">${rows.join("")}</dl>`;
+}
+
+function buildSeoPanelInner(tab) {
+  const preview = buildOgPreviewBlock(tab);
+  const headings = buildHeadingAnalysisBlock(tab);
+  const keywords = buildKeywordAnalysisBlock(tab);
+  const meta = buildSeoMetaRows(tab);
+  if (!preview && !headings && !keywords && !meta) return "";
+  return `${preview}${headings}${keywords}${meta}`;
+}
+
+function seoHasContent(tab) {
+  return Boolean(tab.seo && buildSeoPanelInner(tab));
+}
+
+function buildSeoToolbarButton(tab, index) {
+  if (!seoHasContent(tab)) return "";
+  const panelId = `tab-seo-panel-${index}`;
+  return buildToolbarButton(
+    "btn-seo",
+    "seo",
+    "SEO",
+    `aria-expanded="false" aria-controls="${panelId}" title="Show page SEO and social preview"`
+  );
+}
+
+function buildSeoPanel(tab, index, { forExport = false } = {}) {
+  const inner = buildSeoPanelInner(tab);
+  if (!inner) return "";
+
+  const panelId = `tab-seo-panel-${index}`;
+  if (forExport) {
+    return `
+    <div class="tab-seo-panel tab-seo-panel--export" id="${panelId}">
+      <p class="tab-seo-heading">SEO details</p>
+      <div class="tab-seo-content">${inner}</div>
+    </div>`;
+  }
+
+  return `
+    <div class="tab-seo-panel" id="${panelId}" hidden>
+      <p class="tab-seo-heading">SEO details</p>
+      <div class="tab-seo-content">${inner}</div>
+    </div>`;
+}
+
+function setupSeoToggle(card) {
+  const seoBtn = card.querySelector(".btn-seo");
+  const seoPanel = card.querySelector(".tab-seo-panel");
+  if (!seoBtn || !seoPanel) return;
+
+  seoBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const opening = seoPanel.hidden;
+    seoPanel.hidden = !opening;
+    seoBtn.setAttribute("aria-expanded", opening ? "true" : "false");
+    seoBtn.classList.toggle("is-active", opening);
+  });
+}
+
+function updateTabCardSeo(card, tab, index) {
+  const seoBtn = card.querySelector(".btn-seo");
+  const wasOpen = seoBtn?.classList.contains("is-active") ?? false;
+  const existingPanel = card.querySelector(".tab-seo-panel");
+  const notesWrap = card.querySelector(".tab-notes-wrap");
+  const seoHtml = buildSeoPanel(tab, index);
+  const btnHtml = buildSeoToolbarButton(tab, index);
+
+  if (seoBtn) {
+    seoBtn.outerHTML = btnHtml || "";
+  } else if (btnHtml) {
+    const deleteBtn = card.querySelector(".btn-delete");
+    deleteBtn?.insertAdjacentHTML("beforebegin", btnHtml);
+  }
+
+  if (seoHtml) {
+    if (existingPanel) {
+      existingPanel.outerHTML = seoHtml;
+    } else if (notesWrap) {
+      notesWrap.insertAdjacentHTML("beforebegin", seoHtml);
+    }
+  } else if (existingPanel) {
+    existingPanel.remove();
+  }
+
+  const newBtn = card.querySelector(".btn-seo");
+  const newPanel = card.querySelector(".tab-seo-panel");
+  if (newBtn && newPanel) {
+    if (wasOpen) {
+      newPanel.hidden = false;
+      newBtn.setAttribute("aria-expanded", "true");
+      newBtn.classList.add("is-active");
+    }
+    setupSeoToggle(card);
+  }
+}
+
 function buildUrlBlock(tab) {
   if (tab.openExtensionSettings) {
     return `
@@ -165,6 +541,119 @@ body {
   color: #444;
   font-size: 0.9rem;
   line-height: 1.45;
+}
+.tab-seo-panel {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #eee;
+}
+.tab-seo-heading {
+  margin: 0 0 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #777;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.tab-seo-content {
+  padding: 10px 12px;
+  border: 1px solid #e8e8e8;
+  border-radius: 6px;
+  background: #fafafa;
+}
+.og-preview {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+.og-preview:last-child { margin-bottom: 0; }
+.og-preview-image {
+  flex: 0 0 120px;
+  width: 120px;
+  height: 63px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid #e0e0e0;
+  background: #eee;
+}
+.og-preview-text { flex: 1; min-width: 0; }
+.og-preview-title {
+  margin: 0 0 4px;
+  font-weight: 600;
+  font-size: 0.88rem;
+  line-height: 1.35;
+  color: #1a1a1a;
+}
+.og-preview-desc {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: #555;
+}
+.tab-seo-meta {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+.tab-seo-meta dt {
+  margin: 0;
+  color: #666;
+  font-weight: 600;
+}
+.tab-seo-meta dd {
+  margin: 0;
+  color: #333;
+  word-break: break-word;
+}
+.tab-seo-section {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #ececec;
+}
+.tab-seo-section:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+.tab-seo-subheading {
+  margin: 0 0 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.tab-keyword-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 10px;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+.tab-keyword-table th,
+.tab-keyword-table td {
+  padding: 6px 8px;
+  border: 1px solid #e4e4e4;
+  text-align: left;
+  vertical-align: top;
+}
+.tab-keyword-table thead th {
+  background: #f0f0f0;
+  color: #555;
+  font-weight: 600;
+}
+.tab-keyword-table tbody th {
+  width: 7.5rem;
+  background: #f7f7f7;
+  color: #666;
+  font-weight: 600;
+}
+.tab-seo-meta--overlap {
+  margin-top: 4px;
 }
 .tab-notes-export-wrap {
   display: block;
@@ -319,6 +808,10 @@ ${
   overflow: hidden;
   white-space: normal;
 }
+.report-root.is-thumbnail-view .tab-seo-panel,
+.report-root.is-thumbnail-view .btn-seo {
+  display: none;
+}
 `
     : ""
 }`.trim();
@@ -374,6 +867,7 @@ function buildExportHtml() {
         </div>
         ${screenshotSection(tab, index)}
       </div>
+      ${buildSeoPanel(tab, index, { forExport: true })}
       ${buildExportNotesBlock(tab)}
     </section>`
     )
@@ -696,9 +1190,9 @@ async function retakeFullScreenshot(card, index) {
   const btn = card.querySelector(".btn-full-screenshot");
   if (!btn || btn.disabled) return;
 
-  const originalLabel = btn.textContent;
+  const originalLabel = getToolbarButtonLabel(btn);
   btn.disabled = true;
-  btn.textContent = "Capturing…";
+  setToolbarButtonLabel(btn, "Capturing…");
 
   try {
     const reportTab = await chrome.tabs.getCurrent();
@@ -741,7 +1235,8 @@ async function retakeFullScreenshot(card, index) {
       tab.error = result.error || null;
       tab.screenshot = result.screenshot;
       tab.screenshotFullPage = Boolean(result.screenshotFullPage);
-      if (result.description) tab.description = result.description;
+      tab.seo = result.seo ?? null;
+      tab.description = result.description ?? null;
       if (result.title) tab.title = result.title;
       if (result.url) tab.url = result.url;
       if (result.id) tab.id = result.id;
@@ -750,17 +1245,19 @@ async function retakeFullScreenshot(card, index) {
 
     updateTabCardMedia(card, tab);
 
+    const info = card.querySelector(".tab-card-info");
     const titleEl = card.querySelector(".tab-card-info h2");
     if (titleEl && tab.title) {
       titleEl.textContent = tab.title;
     }
 
+    updateTabCardSeo(card, tab, index);
+
     const descEl = card.querySelector(".tab-description");
     if (tab.description) {
       if (descEl) {
         descEl.textContent = tab.description;
-      } else {
-        const info = card.querySelector(".tab-card-info");
+      } else if (info) {
         const urlBlock = card.querySelector(".tab-card-url");
         const p = document.createElement("p");
         p.className = "tab-description";
@@ -771,6 +1268,8 @@ async function retakeFullScreenshot(card, index) {
           info.appendChild(p);
         }
       }
+    } else if (descEl) {
+      descEl.remove();
     }
 
     await saveReport();
@@ -779,7 +1278,7 @@ async function retakeFullScreenshot(card, index) {
     alert(`Full screenshot failed: ${err?.message || err}`);
   } finally {
     btn.disabled = false;
-    btn.textContent = originalLabel;
+    setToolbarButtonLabel(btn, originalLabel);
   }
 }
 
@@ -798,10 +1297,21 @@ function createTabCard(tab, index) {
       <span class="tab-card-index">${index + 1}</span>
       ${
         showFullScreenshotBtn
-          ? `<button type="button" class="btn-full-screenshot" aria-label="Retake full-page screenshot" title="Retake screenshot by scrolling the full page">Full screenshot</button>`
+          ? buildToolbarButton(
+              "btn-full-screenshot",
+              "fullScreenshot",
+              "Full screenshot",
+              'aria-label="Retake full-page screenshot" title="Retake screenshot by scrolling the full page"'
+            )
           : ""
       }
-      <button type="button" class="btn-delete" aria-label="Remove from report" title="Remove from report">Delete</button>
+      ${buildSeoToolbarButton(tab, index)}
+      ${buildToolbarButton(
+        "btn-delete",
+        "delete",
+        "Delete",
+        'aria-label="Remove from report" title="Remove from report"'
+      )}
     </div>
     <div class="tab-card-body">
       <div class="tab-card-info">
@@ -819,8 +1329,11 @@ function createTabCard(tab, index) {
           : `<div class="tab-card-media">${buildScreenshotBlock(tab)}</div>`
       }
     </div>
+    ${buildSeoPanel(tab, index)}
     ${buildNotesBlock(tab)}
   `;
+
+  setupSeoToggle(card);
 
   const notesEl = card.querySelector(".tab-notes");
   if (notesEl) {

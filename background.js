@@ -40,39 +40,303 @@ function tabResultFromTab(tab) {
     title: tab.title || "Untitled",
     url: tab.url || "",
     description: null,
+    seo: null,
     screenshot: null,
     error: null,
   };
 }
 
 /** Runs inside the page — must be self-contained (no closure vars). */
-function extractMetaDescription() {
-  const read = (meta) => meta?.getAttribute("content")?.trim() || "";
+function extractSeoDetails() {
+  const readContent = (meta) => meta?.getAttribute("content")?.trim() || "";
 
-  for (const meta of document.querySelectorAll("meta[content]")) {
-    if ((meta.getAttribute("name") || "").toLowerCase() === "description") {
-      const text = read(meta);
+  const findMeta = (matchFn) => {
+    for (const meta of document.querySelectorAll("meta[content]")) {
+      if (matchFn(meta)) return readContent(meta);
+    }
+    return "";
+  };
+
+  const readOg = (prop) =>
+    findMeta((meta) => {
+      const property = (meta.getAttribute("property") || "").toLowerCase();
+      const name = (meta.getAttribute("name") || "").toLowerCase();
+      return property === prop || name === prop;
+    });
+
+  const metaDescription = findMeta(
+    (meta) => (meta.getAttribute("name") || "").toLowerCase() === "description"
+  );
+  const ogDescription = readOg("og:description");
+  const twitterDescription = findMeta(
+    (meta) => (meta.getAttribute("name") || "").toLowerCase() === "twitter:description"
+  );
+
+  const description = metaDescription || ogDescription || twitterDescription || null;
+
+  const resolveUrl = (href) => {
+    if (!href) return null;
+    try {
+      return new URL(href, document.baseURI).href;
+    } catch {
+      return href || null;
+    }
+  };
+
+  const empty = (value) => (value && value.length > 0 ? value : null);
+
+  const STOP_WORDS = new Set([
+    "a", "an", "the", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with", "by",
+    "from", "is", "are", "was", "were", "be", "been", "being", "have", "has", "had", "do",
+    "does", "did", "will", "would", "could", "should", "may", "might", "must", "shall", "can",
+    "this", "that", "these", "those", "it", "its", "as", "not", "no", "nor", "so", "if", "then",
+    "than", "too", "very", "just", "about", "into", "over", "after", "before", "between",
+    "under", "again", "further", "once", "here", "there", "when", "where", "why", "how", "all",
+    "each", "few", "more", "most", "other", "some", "such", "only", "own", "same", "both", "any",
+    "your", "you", "we", "our", "they", "their", "he", "she", "his", "her", "what", "which",
+    "who", "whom", "while", "during", "through", "above", "below", "up", "down", "out", "off",
+    "also", "new", "get", "via", "per", "etc",
+  ]);
+
+  const normalizeHeading = (text) =>
+    String(text || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, " ");
+
+  const tokenize = (text) =>
+    String(text || "")
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s'-]/gu, " ")
+      .split(/\s+/)
+      .filter((word) => word.length > 2 && !STOP_WORDS.has(word));
+
+  const compareHeadings = (a, b) => {
+    const left = normalizeHeading(a);
+    const right = normalizeHeading(b);
+    if (!left && !right) return "No title or H1";
+    if (!left) return "No H1 on page";
+    if (!right) return "No page title";
+    if (left === right) return "Exact match";
+    if (left.includes(right) || right.includes(left)) {
+      return "Partial match (one contains the other)";
+    }
+
+    const wordsA = new Set(tokenize(a));
+    const wordsB = new Set(tokenize(b));
+    const shared = [...wordsA].filter((word) => wordsB.has(word));
+    const union = new Set([...wordsA, ...wordsB]).size;
+    const overlapPct = union ? Math.round((shared.length / union) * 100) : 0;
+
+    if (overlapPct >= 50) return `Similar (${overlapPct}% word overlap)`;
+    return `Different (${overlapPct}% word overlap)`;
+  };
+
+  const keywordStats = (text, limit = 8) => {
+    const tokens = tokenize(text);
+    if (!tokens.length) return [];
+
+    const counts = new Map();
+    for (const token of tokens) {
+      counts.set(token, (counts.get(token) || 0) + 1);
+    }
+
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, limit)
+      .map(([word, count]) => ({
+        word,
+        count,
+        density: Math.round((count / tokens.length) * 1000) / 10,
+      }));
+  };
+
+  const overlapWords = (leftText, rightText) => {
+    const left = new Set(tokenize(leftText));
+    const right = new Set(tokenize(rightText));
+    return [...left].filter((word) => right.has(word)).sort();
+  };
+
+  const getFirstParagraph = () => {
+    const isSkipped = (el) =>
+      el.closest('nav, header, footer, aside, [role="navigation"], [role="banner"], [role="contentinfo"]');
+
+    for (const paragraph of document.querySelectorAll("p")) {
+      if (isSkipped(paragraph)) continue;
+      const text = paragraph.textContent?.trim().replace(/\s+/g, " ");
+      if (text && text.length >= 15) return text;
+    }
+
+    for (const paragraph of document.querySelectorAll("p")) {
+      const text = paragraph.textContent?.trim().replace(/\s+/g, " ");
       if (text) return text;
+    }
+
+    return "";
+  };
+
+  const pageTitle = document.title?.trim() || "";
+  const h1Elements = [...document.querySelectorAll("h1")];
+  const h1Count = h1Elements.length;
+  const h1Texts = h1Elements
+    .map((el) => el.textContent?.trim().replace(/\s+/g, " ") || "")
+    .filter(Boolean);
+  const h1 = h1Texts[0] || "";
+  const singleH1 = h1Count === 1;
+  const h1CountNote =
+    h1Count === 0
+      ? "None found"
+      : h1Count === 1
+        ? "1 (recommended)"
+        : `${h1Count} (multiple H1s — usually use one)`;
+
+  const firstParagraphRaw = getFirstParagraph();
+  const firstParagraph =
+    firstParagraphRaw.length > 500
+      ? `${firstParagraphRaw.slice(0, 497)}…`
+      : firstParagraphRaw;
+
+  const titleKeywords = keywordStats(pageTitle);
+  const h1Keywords = keywordStats(h1);
+  const paragraphKeywords = keywordStats(firstParagraphRaw);
+
+  const titleH1Overlap = overlapWords(pageTitle, h1);
+  const titleParagraphOverlap = overlapWords(pageTitle, firstParagraphRaw);
+  const h1ParagraphOverlap = overlapWords(h1, firstParagraphRaw);
+  const allThreeOverlap = titleH1Overlap.filter((word) =>
+    new Set(tokenize(firstParagraphRaw)).has(word)
+  );
+
+  const faviconLink =
+    document.querySelector('link[rel="icon"]') ||
+    document.querySelector('link[rel="shortcut icon"]') ||
+    document.querySelector('link[rel="apple-touch-icon"]');
+
+  const hreflangs = [];
+  for (const link of document.querySelectorAll('link[rel="alternate"][hreflang]')) {
+    const code = link.getAttribute("hreflang");
+    const href = resolveUrl(link.getAttribute("href"));
+    if (code && href) hreflangs.push(`${code}: ${href}`);
+  }
+
+  const articleTags = [];
+  for (const meta of document.querySelectorAll("meta[content]")) {
+    if ((meta.getAttribute("property") || "").toLowerCase() === "article:tag") {
+      const tag = readContent(meta);
+      if (tag) articleTags.push(tag);
     }
   }
 
-  for (const meta of document.querySelectorAll("meta[content]")) {
-    const prop = (meta.getAttribute("property") || "").toLowerCase();
-    const name = (meta.getAttribute("name") || "").toLowerCase();
-    if (prop === "og:description" || name === "og:description") {
-      const text = read(meta);
-      if (text) return text;
-    }
-  }
+  const jsonLdTypes = (() => {
+    const types = new Set();
+    const collect = (obj) => {
+      if (!obj || typeof obj !== "object") return;
+      if (Array.isArray(obj)) {
+        obj.forEach(collect);
+        return;
+      }
+      if (obj["@type"]) {
+        const typeValue = obj["@type"];
+        if (Array.isArray(typeValue)) {
+          typeValue.forEach((entry) => types.add(String(entry)));
+        } else {
+          types.add(String(typeValue));
+        }
+      }
+      if (obj["@graph"]) collect(obj["@graph"]);
+    };
 
-  for (const meta of document.querySelectorAll("meta[content]")) {
-    if ((meta.getAttribute("name") || "").toLowerCase() === "twitter:description") {
-      const text = read(meta);
-      if (text) return text;
+    for (const script of document.querySelectorAll('script[type="application/ld+json"]')) {
+      try {
+        collect(JSON.parse(script.textContent));
+      } catch {
+        // ignore invalid JSON-LD
+      }
     }
-  }
 
-  return null;
+    return types.size > 0 ? [...types].join(", ") : null;
+  })();
+
+  return {
+    description,
+    pageTitle: empty(pageTitle),
+    h1: empty(h1),
+    h1Count,
+    singleH1,
+    h1CountNote,
+    h1All: h1Texts.length > 1 ? h1Texts : null,
+    h1VsPageTitle: compareHeadings(h1, pageTitle),
+    firstParagraph: empty(firstParagraph),
+    firstParagraphWordCount: tokenize(firstParagraphRaw).length || null,
+    keywordAnalysis:
+      titleKeywords.length || h1Keywords.length || paragraphKeywords.length
+        ? {
+            title: titleKeywords,
+            h1: h1Keywords,
+            firstParagraph: paragraphKeywords,
+            inAllThree: allThreeOverlap.slice(0, 15),
+            inTitleAndH1: titleH1Overlap
+              .filter((word) => !allThreeOverlap.includes(word))
+              .slice(0, 15),
+            inTitleAndParagraph: titleParagraphOverlap
+              .filter((word) => !allThreeOverlap.includes(word))
+              .slice(0, 15),
+            inH1AndParagraph: h1ParagraphOverlap
+              .filter((word) => !allThreeOverlap.includes(word))
+              .slice(0, 15),
+          }
+        : null,
+    lang: empty(document.documentElement.lang?.trim()),
+    favicon: resolveUrl(faviconLink?.getAttribute("href")),
+    hreflang: hreflangs.length > 0 ? hreflangs.join("; ") : null,
+    jsonLd: empty(jsonLdTypes),
+    author: empty(
+      findMeta((meta) => (meta.getAttribute("name") || "").toLowerCase() === "author")
+    ),
+    themeColor: empty(
+      findMeta((meta) => (meta.getAttribute("name") || "").toLowerCase() === "theme-color")
+    ),
+    generator: empty(
+      findMeta((meta) => (meta.getAttribute("name") || "").toLowerCase() === "generator")
+    ),
+    applicationName: empty(
+      findMeta((meta) => (meta.getAttribute("name") || "").toLowerCase() === "application-name")
+    ),
+    ogTitle: empty(readOg("og:title")),
+    ogDescription: empty(ogDescription),
+    ogImage: resolveUrl(readOg("og:image")),
+    ogImageAlt: empty(readOg("og:image:alt")),
+    ogImageWidth: empty(readOg("og:image:width")),
+    ogImageHeight: empty(readOg("og:image:height")),
+    ogUrl: empty(resolveUrl(readOg("og:url"))),
+    ogType: empty(readOg("og:type")),
+    ogSiteName: empty(readOg("og:site_name")),
+    ogLocale: empty(readOg("og:locale")),
+    articlePublished: empty(readOg("article:published_time")),
+    articleModified: empty(readOg("article:modified_time")),
+    articleAuthor: empty(readOg("article:author")),
+    articleSection: empty(readOg("article:section")),
+    articleTags: articleTags.length > 0 ? articleTags.join(", ") : null,
+    twitterCard: empty(readOg("twitter:card")),
+    twitterSite: empty(readOg("twitter:site")),
+    twitterCreator: empty(readOg("twitter:creator")),
+    twitterTitle: empty(readOg("twitter:title")),
+    twitterDescription: empty(twitterDescription),
+    twitterImage: resolveUrl(readOg("twitter:image") || readOg("twitter:image:src")),
+    twitterImageAlt: empty(readOg("twitter:image:alt")),
+    canonical: empty(
+      resolveUrl(document.querySelector('link[rel="canonical"]')?.getAttribute("href"))
+    ),
+    keywords: empty(
+      findMeta((meta) => (meta.getAttribute("name") || "").toLowerCase() === "keywords")
+    ),
+    robots: empty(
+      findMeta((meta) => (meta.getAttribute("name") || "").toLowerCase() === "robots")
+    ),
+    googlebot: empty(
+      findMeta((meta) => (meta.getAttribute("name") || "").toLowerCase() === "googlebot")
+    ),
+  };
 }
 
 async function waitForTabComplete(tabId, timeoutMs = 4000) {
@@ -102,7 +366,7 @@ async function prepareTab(tab) {
   await delay(TAB_PREPARE_DELAY_MS);
 }
 
-async function fetchPageDescription(tab) {
+async function fetchPageSeo(tab) {
   if (!tab?.id || isProbablyRestrictedUrl(tab.url || "")) {
     return null;
   }
@@ -114,11 +378,11 @@ async function fetchPageDescription(tab) {
       const [injection] = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
         world,
-        func: extractMetaDescription,
+        func: extractSeoDetails,
       });
 
       const value = injection?.result;
-      if (typeof value === "string" && value.length > 0) {
+      if (value && typeof value === "object") {
         return value;
       }
     } catch {
@@ -441,7 +705,8 @@ async function retakeTabScreenshot({
     result.screenshot = screenshot;
     result.screenshotFullPage = fullPage;
     result.error = null;
-    result.description = await fetchPageDescription(freshTab);
+    result.seo = await fetchPageSeo(freshTab);
+    result.description = result.seo?.description || null;
     result.title = freshTab.title || result.title;
     result.url = freshTab.url || result.url;
     result.id = freshTab.id;
@@ -485,16 +750,17 @@ async function captureTabSafely(tab) {
     await prepareTab(tab);
     const freshTab = await chrome.tabs.get(tab.id);
 
-    const [screenshot, description] = await Promise.all([
+    const [screenshot, seo] = await Promise.all([
       captureTabImage(freshTab).catch((err) => ({ error: err })),
-      fetchPageDescription(freshTab),
+      fetchPageSeo(freshTab),
     ]);
 
     if (screenshot?.error) {
       throw screenshot.error;
     }
     result.screenshot = screenshot;
-    result.description = description;
+    result.seo = seo;
+    result.description = seo?.description || null;
   } catch (err) {
     const message = err?.message || "Screenshot failed";
     if (message.includes("activeTab") || message.includes("all_urls")) {
@@ -503,10 +769,12 @@ async function captureTabSafely(tab) {
       result.error = message;
     }
 
-    if (!result.description) {
+    if (!result.seo) {
       try {
-        result.description = await fetchPageDescription(tab);
+        result.seo = await fetchPageSeo(tab);
+        result.description = result.seo?.description || null;
       } catch {
+        result.seo = null;
         result.description = null;
       }
     }
@@ -520,8 +788,10 @@ async function processTabWithoutScreenshot(tab) {
 
   if (!isProbablyRestrictedUrl(result.url)) {
     try {
-      result.description = await fetchPageDescription(tab);
+      result.seo = await fetchPageSeo(tab);
+      result.description = result.seo?.description || null;
     } catch {
+      result.seo = null;
       result.description = null;
     }
   }
@@ -606,6 +876,7 @@ async function handleReportFailure(err) {
         openExtensionSettings: true,
         screenshot: null,
         description: null,
+        seo: null,
         error: err?.message || SITE_ACCESS_HELP,
       },
     ],
