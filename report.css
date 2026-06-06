@@ -117,6 +117,7 @@ body {
 
 .tab-card-media {
   order: 2;
+  position: relative;
 }
 
 .tab-card-media .tab-screenshot,
@@ -276,6 +277,17 @@ body {
   padding-bottom: 8px;
 }
 
+.report-root.is-thumbnail-view .btn-full-screenshot {
+  display: none;
+}
+
+.report-root.is-thumbnail-view .screenshot-mode-badge {
+  top: 4px;
+  right: 4px;
+  padding: 1px 5px;
+  font-size: 0.55rem;
+}
+
 .report-root.is-thumbnail-view .tab-card-body {
   flex-direction: row;
   gap: 10px;
@@ -426,6 +438,43 @@ body {
   color: #888;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+.btn-full-screenshot {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border: 1px solid #b4c8e0;
+  border-radius: 4px;
+  background: #f5f8ff;
+  color: #1a4a8a;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.btn-full-screenshot:hover:not(:disabled) {
+  background: #e8f0ff;
+  border-color: #8fa3d4;
+}
+
+.btn-full-screenshot:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.screenshot-mode-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(26, 74, 138, 0.88);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  pointer-events: none;
 }
 
 .btn-delete {

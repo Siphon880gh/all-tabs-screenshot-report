@@ -575,13 +575,141 @@ function buildScreenshotBlock(tab) {
     return "";
   }
 
+  const fullPageBadge = tab.screenshotFullPage
+    ? `<span class="screenshot-mode-badge" title="Full-page screenshot">Full page</span>`
+    : "";
+
   if (tab.screenshot) {
-    return `<img class="tab-screenshot" src="${tab.screenshot}" alt="Screenshot of ${escapeAttr(tab.title)}">`;
+    return `${fullPageBadge}<img class="tab-screenshot" src="${tab.screenshot}" alt="Screenshot of ${escapeAttr(tab.title)}">`;
   }
   return `<div class="screenshot-error" title="${escapeAttr(tab.error || "Unknown error")}">
     <strong>Screenshot unavailable</strong>
     <span class="screenshot-error-detail">${escapeHtml(tab.error || "Unknown error")}</span>
   </div>`;
+}
+
+function updateTabCardMedia(card, tab) {
+  const media = card.querySelector(".tab-card-media");
+  if (!media) return;
+  media.innerHTML = buildScreenshotBlock(tab);
+}
+
+function waitForRetakeScreenshotResult(requestId, timeoutMs = 120000) {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      chrome.runtime.onMessage.removeListener(listener);
+      reject(new Error("Screenshot timed out. The page may be too long or the tab closed."));
+    }, timeoutMs);
+
+    function listener(message) {
+      if (
+        message?.action !== "retakeScreenshotResult" ||
+        message.requestId !== requestId
+      ) {
+        return;
+      }
+
+      chrome.runtime.onMessage.removeListener(listener);
+      clearTimeout(timeout);
+      resolve(message);
+    }
+
+    chrome.runtime.onMessage.addListener(listener);
+  });
+}
+
+async function retakeFullScreenshot(card, index) {
+  const tab = reportData?.tabs?.[index];
+  if (!tab || reportData?.screenshotsSkipped || tab.openExtensionSettings) return;
+
+  const btn = card.querySelector(".btn-full-screenshot");
+  if (!btn || btn.disabled) return;
+
+  const originalLabel = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Capturing…";
+
+  try {
+    const reportTab = await chrome.tabs.getCurrent();
+    const requestId = crypto.randomUUID();
+
+    const ack = await chrome.runtime.sendMessage({
+      action: "retakeScreenshot",
+      requestId,
+      tabId: tab.id,
+      url: tab.url,
+      title: tab.title,
+      fullPage: true,
+      returnToTabId: reportTab?.id ?? null,
+    });
+
+    if (chrome.runtime.lastError) {
+      throw new Error(chrome.runtime.lastError.message);
+    }
+
+    if (!ack?.ok || !ack?.started) {
+      throw new Error("Could not start screenshot. Reload the extension and try again.");
+    }
+
+    const response = await waitForRetakeScreenshotResult(requestId);
+    const result = response?.result;
+
+    if (!response?.ok) {
+      throw new Error(result?.error || "Screenshot failed");
+    }
+
+    if (!result) {
+      throw new Error("Screenshot returned no data");
+    }
+
+    if (result.error && !result.screenshot) {
+      tab.error = result.error;
+      tab.screenshot = null;
+      tab.screenshotFullPage = false;
+    } else {
+      tab.error = result.error || null;
+      tab.screenshot = result.screenshot;
+      tab.screenshotFullPage = Boolean(result.screenshotFullPage);
+      if (result.description) tab.description = result.description;
+      if (result.title) tab.title = result.title;
+      if (result.url) tab.url = result.url;
+      if (result.id) tab.id = result.id;
+      if (result.windowId) tab.windowId = result.windowId;
+    }
+
+    updateTabCardMedia(card, tab);
+
+    const titleEl = card.querySelector(".tab-card-info h2");
+    if (titleEl && tab.title) {
+      titleEl.textContent = tab.title;
+    }
+
+    const descEl = card.querySelector(".tab-description");
+    if (tab.description) {
+      if (descEl) {
+        descEl.textContent = tab.description;
+      } else {
+        const info = card.querySelector(".tab-card-info");
+        const urlBlock = card.querySelector(".tab-card-url");
+        const p = document.createElement("p");
+        p.className = "tab-description";
+        p.textContent = tab.description;
+        if (urlBlock?.nextSibling) {
+          info.insertBefore(p, urlBlock.nextSibling);
+        } else {
+          info.appendChild(p);
+        }
+      }
+    }
+
+    await saveReport();
+    updateMeta();
+  } catch (err) {
+    alert(`Full screenshot failed: ${err?.message || err}`);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalLabel;
+  }
 }
 
 function createTabCard(tab, index) {
@@ -590,10 +718,18 @@ function createTabCard(tab, index) {
   card.draggable = false;
   card.dataset.index = String(index);
 
+  const showFullScreenshotBtn =
+    !reportData?.screenshotsSkipped && !tab.openExtensionSettings;
+
   card.innerHTML = `
     <div class="tab-card-toolbar">
       <button type="button" class="drag-handle" aria-label="Drag to reorder" title="Drag to reorder">⠿</button>
       <span class="tab-card-index">${index + 1}</span>
+      ${
+        showFullScreenshotBtn
+          ? `<button type="button" class="btn-full-screenshot" aria-label="Retake full-page screenshot" title="Retake screenshot by scrolling the full page">Full screenshot</button>`
+          : ""
+      }
       <button type="button" class="btn-delete" aria-label="Remove from report" title="Remove from report">Delete</button>
     </div>
     <div class="tab-card-body">
@@ -630,6 +766,17 @@ function createTabCard(tab, index) {
     settingsBtn.addEventListener("click", () => {
       chrome.tabs.create({
         url: `chrome://extensions/?id=${chrome.runtime.id}`,
+      });
+    });
+  }
+
+  const fullScreenshotBtn = card.querySelector(".btn-full-screenshot");
+  if (fullScreenshotBtn) {
+    fullScreenshotBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const idx = Number(card.dataset.index);
+      retakeFullScreenshot(card, idx).catch((err) => {
+        alert(`Full screenshot failed: ${err?.message || err}`);
       });
     });
   }
