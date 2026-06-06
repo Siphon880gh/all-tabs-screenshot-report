@@ -858,6 +858,20 @@ function buildExportScreenshotBlock(tab, index) {
   </div>`;
 }
 
+function getSeoExportVisibility() {
+  const root = document.getElementById("report-root");
+  if (!root || viewMode !== "full") return new Map();
+
+  const visibility = new Map();
+  root.querySelectorAll(".tab-card").forEach((card) => {
+    const index = Number(card.dataset.index);
+    if (!Number.isFinite(index)) return;
+    const seoBtn = card.querySelector(".btn-seo");
+    visibility.set(index, Boolean(seoBtn?.classList.contains("is-active")));
+  });
+  return visibility;
+}
+
 function buildExportHtml() {
   const count = reportData.tabs.length;
   const failed = reportData.screenshotsSkipped
@@ -870,7 +884,13 @@ function buildExportHtml() {
     viewMode === "thumbnail" && !reportData.screenshotsSkipped
       ? " · Thumbnail layout"
       : "";
-  const meta = `${count} tab${count === 1 ? "" : "s"} · Generated ${formatGeneratedAt(reportData.generatedAt)}${skippedNote}${layoutNote}${failed ? ` · ${failed} without screenshot` : ""}`;
+  const seoVisibility = getSeoExportVisibility();
+  const seoCount = [...seoVisibility.values()].filter(Boolean).length;
+  const seoNote =
+    viewMode === "full" && seoCount > 0
+      ? ` · SEO details for ${seoCount} tab${seoCount === 1 ? "" : "s"}`
+      : "";
+  const meta = `${count} tab${count === 1 ? "" : "s"} · Generated ${formatGeneratedAt(reportData.generatedAt)}${skippedNote}${layoutNote}${seoNote}${failed ? ` · ${failed} without screenshot` : ""}`;
 
   const thumbnailExport =
     viewMode === "thumbnail" && !reportData.screenshotsSkipped;
@@ -893,7 +913,7 @@ function buildExportHtml() {
         </div>
         ${screenshotSection(tab, index)}
       </div>
-      ${buildSeoPanel(tab, index, { forExport: true })}
+      ${viewMode === "full" && seoVisibility.get(index) ? buildSeoPanel(tab, index, { forExport: true }) : ""}
       ${buildExportNotesBlock(tab)}
     </section>`
     )

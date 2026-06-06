@@ -60,7 +60,24 @@ Snapshot “what was open” at a point in time (e.g. before a refactor, after a
 | Reorder / delete | Drag cards to reorder; delete removes a tab from the report only. |
 | View modes | Full-size screenshots or compact thumbnail grid. |
 | Export | `index.html` + `screenshotNN.jpg` in a folder you choose. |
+| SEO details | Per-card **SEO** button in full view expands headings, keywords, and meta tags. |
 | Local storage | Latest report is kept in IndexedDB until you **Clear stored report**. |
+
+## Controlling export appearance
+
+Export reflects the report as you have it arranged when you click **Export**:
+
+| What you set in the report | What the export includes |
+|----------------------------|--------------------------|
+| **Full view** (default) | Full-size screenshots and card layout. |
+| **Thumbnails** | Compact grid layout; SEO panels are omitted. |
+| **SEO** toggled on for a card (full view only) | That card’s SEO block is written into `index.html`. |
+| **SEO** left collapsed | No SEO block for that card in the export. |
+| Card order after drag-and-drop | Same order in the exported HTML. |
+| **Notes** on a card | Included when the note field has text. |
+| Tabs removed with **Delete** | Omitted from the export. |
+
+To include SEO for specific tabs only, stay in **Full view**, click **SEO** on each card you want documented, then **Export**. Thumbnail exports never include SEO, even if you expanded panels before switching views.
 
 ## Permissions
 
