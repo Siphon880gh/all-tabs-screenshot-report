@@ -594,6 +594,77 @@ function updateTabCardMedia(card, tab) {
   media.innerHTML = buildScreenshotBlock(tab);
 }
 
+function openLightbox(src, alt, caption) {
+  const lightbox = document.getElementById("lightbox");
+  const image = lightbox?.querySelector(".lightbox-image");
+  const captionEl = lightbox?.querySelector(".lightbox-caption");
+  if (!lightbox || !image) return;
+
+  image.src = src;
+  image.alt = alt || "Screenshot";
+  if (captionEl) {
+    captionEl.textContent = caption || "";
+    captionEl.hidden = !caption;
+  }
+
+  lightbox.hidden = false;
+  lightbox.setAttribute("aria-hidden", "false");
+  document.body.classList.add("lightbox-open");
+  lightbox.querySelector(".lightbox-close")?.focus();
+}
+
+function closeLightbox() {
+  const lightbox = document.getElementById("lightbox");
+  if (!lightbox || lightbox.hidden) return;
+
+  lightbox.hidden = true;
+  lightbox.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("lightbox-open");
+
+  const image = lightbox.querySelector(".lightbox-image");
+  if (image) {
+    image.removeAttribute("src");
+    image.alt = "";
+  }
+}
+
+function openLightboxFromScreenshot(img) {
+  const card = img.closest(".tab-card");
+  const title = card?.querySelector(".tab-card-info h2")?.textContent?.trim() || "";
+  openLightbox(img.src, img.alt, title);
+}
+
+function setupLightbox() {
+  const lightbox = document.getElementById("lightbox");
+  if (!lightbox) return;
+
+  const root = document.getElementById("report-root");
+  root?.addEventListener("click", (e) => {
+    const img = e.target.closest(".tab-screenshot");
+    if (!img || !root.contains(img)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    openLightboxFromScreenshot(img);
+  });
+
+  lightbox.querySelector(".lightbox-close")?.addEventListener("click", closeLightbox);
+
+  lightbox.addEventListener("click", (e) => {
+    if (e.target === lightbox) {
+      closeLightbox();
+    }
+  });
+
+  const content = lightbox.querySelector(".lightbox-content");
+  content?.addEventListener("click", (e) => e.stopPropagation());
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !lightbox.hidden) {
+      closeLightbox();
+    }
+  });
+}
+
 function waitForRetakeScreenshotResult(requestId, timeoutMs = 120000) {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
@@ -1052,6 +1123,7 @@ async function loadReport() {
 
   const root = document.getElementById("report-root");
   setupDragAndDrop(root);
+  setupLightbox();
 
   document.getElementById("btn-view-toggle").addEventListener("click", toggleViewMode);
   updateViewToggleButton();
