@@ -527,11 +527,27 @@ body {
 .tab-card-body { display: flex; flex-direction: column; gap: 12px; }
 .tab-card-info { order: 1; }
 .tab-card-media { order: 2; }
-.tab-card-info h2 {
+.tab-card-title {
   margin: 0 0 8px;
   font-size: 1.1rem;
   line-height: 1.35;
   word-break: break-word;
+}
+.report-root:not(.is-thumbnail-view) .tab-card-sticky-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: #fff;
+  margin: -16px -20px 10px;
+  padding: 16px 20px 10px;
+  border-bottom: 1px solid #eee;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+.report-root:not(.is-thumbnail-view) .tab-card-toolbar {
+  margin-bottom: 8px;
+}
+.report-root:not(.is-thumbnail-view) .tab-card-title {
+  margin-bottom: 0;
 }
 .tab-card-info p { margin: 0 0 12px; }
 .tab-card-info p:last-child { margin-bottom: 0; }
@@ -716,30 +732,25 @@ ${
   align-items: start;
 }
 .report-root.is-thumbnail-view .tab-card {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  column-gap: 10px;
+  row-gap: 8px;
+  align-items: start;
   padding: 10px 12px;
   min-width: 0;
   overflow: hidden;
 }
+.report-root.is-thumbnail-view .tab-card-sticky-header,
 .report-root.is-thumbnail-view .tab-card-body {
-  flex-direction: row;
-  gap: 10px;
-  align-items: flex-start;
-  min-width: 0;
+  display: contents;
 }
-.report-root.is-thumbnail-view .tab-card-media {
-  order: 1;
-  flex: 0 0 112px;
-  width: 112px;
-  min-width: 112px;
+.report-root.is-thumbnail-view .tab-card-toolbar {
+  grid-column: 1 / -1;
 }
-.report-root.is-thumbnail-view .tab-card-info {
-  order: 2;
-  flex: 1;
-  min-width: 0;
-}
-.report-root.is-thumbnail-view .tab-card-info h2 {
+.report-root.is-thumbnail-view .tab-card-title {
+  grid-column: 2;
+  grid-row: 2;
   margin: 0;
   font-size: 0.82rem;
   line-height: 1.3;
@@ -747,6 +758,21 @@ ${
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
   overflow: hidden;
+}
+.report-root.is-thumbnail-view .tab-card-media {
+  grid-column: 1;
+  grid-row: 2 / span 2;
+  width: 112px;
+  min-width: 112px;
+}
+.report-root.is-thumbnail-view .tab-card-info {
+  grid-column: 2;
+  grid-row: 3;
+  min-width: 0;
+}
+.report-root.is-thumbnail-view .tab-seo-panel,
+.report-root.is-thumbnail-view .tab-notes-wrap {
+  grid-column: 1 / -1;
 }
 .report-root.is-thumbnail-view .tab-card-url {
   display: block;
@@ -1124,7 +1150,7 @@ function closeLightbox() {
 
 function openLightboxFromScreenshot(img) {
   const card = img.closest(".tab-card");
-  const title = card?.querySelector(".tab-card-info h2")?.textContent?.trim() || "";
+  const title = card?.querySelector(".tab-card-title")?.textContent?.trim() || "";
   openLightbox(img.src, img.alt, title);
 }
 
@@ -1246,7 +1272,7 @@ async function retakeFullScreenshot(card, index) {
     updateTabCardMedia(card, tab);
 
     const info = card.querySelector(".tab-card-info");
-    const titleEl = card.querySelector(".tab-card-info h2");
+    const titleEl = card.querySelector(".tab-card-title");
     if (titleEl && tab.title) {
       titleEl.textContent = tab.title;
     }
@@ -1292,30 +1318,32 @@ function createTabCard(tab, index) {
     !reportData?.screenshotsSkipped && !tab.openExtensionSettings;
 
   card.innerHTML = `
-    <div class="tab-card-toolbar">
-      <button type="button" class="drag-handle" aria-label="Drag to reorder" title="Drag to reorder">⠿</button>
-      <span class="tab-card-index">${index + 1}</span>
-      ${
-        showFullScreenshotBtn
-          ? buildToolbarButton(
-              "btn-full-screenshot",
-              "fullScreenshot",
-              "Full screenshot",
-              'aria-label="Retake full-page screenshot" title="Retake screenshot by scrolling the full page"'
-            )
-          : ""
-      }
-      ${buildSeoToolbarButton(tab, index)}
-      ${buildToolbarButton(
-        "btn-delete",
-        "delete",
-        "Delete",
-        'aria-label="Remove from report" title="Remove from report"'
-      )}
+    <div class="tab-card-sticky-header">
+      <div class="tab-card-toolbar">
+        <button type="button" class="drag-handle" aria-label="Drag to reorder" title="Drag to reorder">⠿</button>
+        <span class="tab-card-index">${index + 1}</span>
+        ${
+          showFullScreenshotBtn
+            ? buildToolbarButton(
+                "btn-full-screenshot",
+                "fullScreenshot",
+                "Full screenshot",
+                'aria-label="Retake full-page screenshot" title="Retake screenshot by scrolling the full page"'
+              )
+            : ""
+        }
+        ${buildSeoToolbarButton(tab, index)}
+        ${buildToolbarButton(
+          "btn-delete",
+          "delete",
+          "Delete",
+          'aria-label="Remove from report" title="Remove from report"'
+        )}
+      </div>
+      <h2 class="tab-card-title">${escapeHtml(tab.title)}</h2>
     </div>
     <div class="tab-card-body">
       <div class="tab-card-info">
-        <h2>${escapeHtml(tab.title)}</h2>
         ${buildUrlBlock(tab)}
         ${
           tab.description
