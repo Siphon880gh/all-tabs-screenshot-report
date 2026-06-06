@@ -994,12 +994,146 @@ function updateViewToggleButton() {
     : "Show compact thumbnail grid";
 }
 
+function truncateProgressTitle(title) {
+  const text = String(title || "").trim();
+  if (!text) return "—";
+  if (text.length <= 5) return text;
+  return `${text.slice(0, 5)}…`;
+}
+
+function isScrollProgressVisible() {
+  return (
+    viewMode === "full" &&
+    !isDragging &&
+    !isDragHandleActive &&
+    Boolean(reportData?.tabs?.length)
+  );
+}
+
+function getCurrentCardIndex() {
+  const root = document.getElementById("report-root");
+  if (!root || !isScrollProgressVisible()) return -1;
+
+  const cards = [...root.querySelectorAll(".tab-card")];
+  if (!cards.length) return -1;
+
+  const anchor = Math.min(window.innerHeight * 0.32, 200);
+  let current = 0;
+
+  for (let i = 0; i < cards.length; i += 1) {
+    const { top } = cards[i].getBoundingClientRect();
+    if (top <= anchor) {
+      current = i;
+    }
+  }
+
+  return current;
+}
+
+function scrollToCardIndex(index) {
+  const root = document.getElementById("report-root");
+  const card = root?.querySelector(`.tab-card[data-index="${index}"]`);
+  if (!card) return;
+  card.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function updateScrollSlot(slotEl, tab, { clickable = false } = {}) {
+  if (!slotEl) return;
+
+  const titleEl = slotEl.querySelector(".scroll-progress-title");
+  if (!tab) {
+    slotEl.hidden = true;
+    if (titleEl) titleEl.textContent = "";
+    slotEl.removeAttribute("title");
+    return;
+  }
+
+  slotEl.hidden = false;
+  const fullTitle = tab.title || "Untitled";
+  if (titleEl) titleEl.textContent = truncateProgressTitle(fullTitle);
+  slotEl.title = fullTitle;
+  slotEl.disabled = !clickable;
+}
+
+function updateScrollProgress() {
+  const rail = document.getElementById("report-scroll-progress");
+  if (!rail) return;
+
+  if (!isScrollProgressVisible()) {
+    rail.hidden = true;
+    return;
+  }
+
+  const tabs = reportData.tabs;
+  const currentIndex = getCurrentCardIndex();
+  if (currentIndex < 0) {
+    rail.hidden = true;
+    return;
+  }
+
+  rail.hidden = false;
+
+  const currentTab = tabs[currentIndex];
+  const prevTab = currentIndex > 0 ? tabs[currentIndex - 1] : null;
+  const nextTab = currentIndex < tabs.length - 1 ? tabs[currentIndex + 1] : null;
+
+  const currentTitle = document.getElementById("scroll-progress-current-title");
+  const currentIndexEl = document.getElementById("scroll-progress-index");
+  const prevBtn = document.getElementById("scroll-progress-prev");
+  const nextBtn = document.getElementById("scroll-progress-next");
+
+  if (currentTitle) {
+    const fullTitle = currentTab?.title || "Untitled";
+    currentTitle.textContent = truncateProgressTitle(fullTitle);
+    currentTitle.title = fullTitle;
+  }
+
+  if (currentIndexEl) {
+    currentIndexEl.textContent = `${currentIndex + 1} / ${tabs.length}`;
+  }
+
+  updateScrollSlot(prevBtn, prevTab, { clickable: true });
+  updateScrollSlot(nextBtn, nextTab, { clickable: true });
+
+  if (prevBtn) prevBtn.dataset.index = prevTab ? String(currentIndex - 1) : "";
+  if (nextBtn) nextBtn.dataset.index = nextTab ? String(currentIndex + 1) : "";
+}
+
+let scrollProgressRaf = null;
+
+function scheduleScrollProgressUpdate() {
+  if (scrollProgressRaf) return;
+  scrollProgressRaf = requestAnimationFrame(() => {
+    scrollProgressRaf = null;
+    updateScrollProgress();
+  });
+}
+
+function setupScrollProgress() {
+  const prevBtn = document.getElementById("scroll-progress-prev");
+  const nextBtn = document.getElementById("scroll-progress-next");
+
+  const onNavClick = (e) => {
+    const index = Number(e.currentTarget?.dataset?.index);
+    if (Number.isFinite(index)) {
+      scrollToCardIndex(index);
+    }
+  };
+
+  prevBtn?.addEventListener("click", onNavClick);
+  nextBtn?.addEventListener("click", onNavClick);
+
+  window.addEventListener("scroll", scheduleScrollProgressUpdate, { passive: true });
+  window.addEventListener("resize", scheduleScrollProgressUpdate, { passive: true });
+}
+
 function applyViewLayout() {
   const root = document.getElementById("report-root");
   if (!root) return;
   const showThumbnail =
     viewMode === "thumbnail" || isDragging || isDragHandleActive;
   root.classList.toggle("is-thumbnail-view", showThumbnail);
+  scheduleScrollProgressUpdate();
 }
 
 function setViewMode(mode) {
@@ -1641,6 +1775,7 @@ function renderReport() {
 
   if (!reportData?.tabs?.length) {
     updateMeta();
+    scheduleScrollProgressUpdate();
     return;
   }
 
@@ -1650,6 +1785,7 @@ function renderReport() {
 
   updateMeta();
   applyViewLayout();
+  scheduleScrollProgressUpdate();
 }
 
 async function loadReport() {
@@ -1665,6 +1801,7 @@ async function loadReport() {
   const root = document.getElementById("report-root");
   setupDragAndDrop(root);
   setupLightbox();
+  setupScrollProgress();
 
   document.getElementById("btn-view-toggle").addEventListener("click", toggleViewMode);
   updateViewToggleButton();

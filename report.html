@@ -20,6 +20,24 @@
       <p id="report-screenshot-status" class="report-screenshot-status" hidden></p>
       <p class="report-hint">Drag a card to reorder — it slides into place in the grid · Delete removes it from this report</p>
     </header>
+    <aside
+      id="report-scroll-progress"
+      class="report-scroll-progress"
+      hidden
+      aria-live="polite"
+      aria-label="Report scroll position"
+    >
+      <button type="button" id="scroll-progress-prev" class="scroll-progress-slot scroll-progress-prev" hidden>
+        <span class="scroll-progress-title"></span>
+      </button>
+      <div class="scroll-progress-slot scroll-progress-current">
+        <span class="scroll-progress-title" id="scroll-progress-current-title"></span>
+        <span class="scroll-progress-index" id="scroll-progress-index"></span>
+      </div>
+      <button type="button" id="scroll-progress-next" class="scroll-progress-slot scroll-progress-next" hidden>
+        <span class="scroll-progress-title"></span>
+      </button>
+    </aside>
     <main id="report-root" class="report-root"></main>
     <p id="report-empty" class="report-empty" hidden>No report data found. Open the extension menu and choose a report option.</p>
     <div id="lightbox" class="lightbox" hidden aria-hidden="true">
